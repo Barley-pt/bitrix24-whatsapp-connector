@@ -1,0 +1,45 @@
+ACP GROUP Source-Available License
+
+Copyright (c) 2026 ACP GROUP (https://acp-24.com). All rights reserved.
+
+NOTE: this is a source-available license, not an OSI-approved open-source license.
+The source is open to read, study, build on and deploy; the terms below govern how
+you may redistribute it and how it may be branded.
+
+1. Grant
+   Permission is granted, free of charge, to any person obtaining a copy of this
+   software and its associated documentation files (the "Software"), to use, copy,
+   modify, merge, publish, distribute, sublicense and/or sell copies of the
+   Software, and to permit persons to whom the Software is furnished to do so,
+   including for commercial purposes and for providing services to third parties,
+   subject to the conditions below.
+
+2. Attribution must be retained
+   The attribution and branding shipped with the Software must remain intact in any
+   deployment of it:
+     - the "Powered by ACP GROUP" notice rendered on free-tier deployments, and
+     - the branding defaults in src/brand.ts (FREE_TIER_POWERED_BY,
+       FREE_TIER_SUPPORT_URL and DEFAULT_BOT_NAME).
+   You may not remove, hide or replace that attribution in a deployment of the
+   Software without a white-label license (see clause 3).
+
+3. White label requires a commercial license
+   Removing or replacing the ACP GROUP attribution - including by setting the
+   BRAND_CONNECTOR_NAME, BRAND_BOT_NAME or BRAND_SUPPORT_URL Worker variables - is
+   permitted only under a commercial white-label license. See
+   LICENSE-WHITE-LABEL.md, or contact licensing@acp-24.com. A valid white-label
+   license key unlocks those variables for the portals it is activated on.
+
+4. Trademarks
+   No rights or licence in the trademarks "ACP", "ACP GROUP" or any related marks
+   are granted by this license. The attribution required by clause 2 is a copyright
+   obligation only; you may not use the ACP marks to name, promote or brand your own
+   products or services.
+
+5. No warranty
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+   FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+   COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
+   AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+   WITH THE SOFTWARE OR ITS USE.

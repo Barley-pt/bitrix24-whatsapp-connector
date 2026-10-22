@@ -1,6 +1,6 @@
 # Bitrix24 WhatsApp Connector
 
-An open-source Bitrix24 Market app that bridges WhatsApp (via WasenderAPI) into a native Bitrix24
+A source-available Bitrix24 Market app that bridges WhatsApp (via WasenderAPI) into a native Bitrix24
 Open Channel. Operators answer inside the Contact Center; the app UI only manages connections and
 licensing.
 
@@ -17,6 +17,7 @@ Two surfaces, one backend:
 | Database | Cloudflare D1 (`bitrix_whatsapp`) |
 | UI | React 19 + Tailwind v4, built to a single inlined `index.html` |
 | Licensing | [Maestro](https://maestro.acp-24.com), product slug `wa-connector` |
+| License | Source-available, see [LICENSE](LICENSE) (not an OSI-approved open-source license) |
 | Public URL | `https://YOUR_DOMAIN` |
 
 Serving does not require the public domain's DNS to be on Cloudflare: an edge/reverse-proxy server
@@ -43,7 +44,8 @@ hosts only the Worker and D1.
    seconds, but the outbound consumer doesn't hardcode any assumed limit: a 429 is paced by
    requeueing with the `x-ratelimit-reset` Wasender itself reports (`index.ts`), which is correct
    whether the real production limit turns out to be 1/60s or much higher. See
-   [docs/wasenderapi.md](docs/wasenderapi.md).
+   [docs/wasenderapi.md](docs/wasenderapi.md), our distilled notes on the published API reference
+   at https://wasenderapi.com/api-docs.
 2. **~~Nothing has run against a real portal~~ - resolved.** Verified live in both directions
    during testing. Getting there surfaced two real bugs worth remembering:
    `ensureConnectorRegistered` only compares a bare version number, so a portal that survives an
@@ -151,6 +153,7 @@ src/
 ui/                 React SPA, built to public/index.html
 schema.sql          D1 schema (single source of truth, also used by tests)
 test/               vitest running in workerd
+docs/               distilled WasenderAPI contract notes (docs/wasenderapi.md)
 scripts/            bootstrap.sh (first run) and deploy.sh (every deploy after)
 deploy/nginx/       nginx site template (deploy/nginx/connector.conf)
 ```
@@ -177,8 +180,11 @@ every read - never trusted blindly). `src/license.ts` is a Workers-native port o
 Node license client (Web Crypto Ed25519 instead of `node:crypto`, D1 instead of a filesystem
 cache).
 
-There is no self-serve purchase flow yet, so the operator binds a purchased key to a portal via
+An operator binds a key to a portal from the app UI's license panel (self-serve,
+`POST /api/license/activate`), or in bulk via the admin route
 `POST /admin/portals/:domain/license` (`X-Admin-Key: $ADMIN_SECRET`, `{"licenseKey": "..."}`).
+A 14-day white-label trial key is issued self-serve and unlocks the same `white_label` feature as
+a paid license - see [LICENSE-WHITE-LABEL.md](LICENSE-WHITE-LABEL.md).
 The same router exposes `GET` (snapshot), `POST .../revalidate`, and `DELETE` (release the seat).
 A cron trigger (`wrangler.jsonc`'s `triggers.crons`) revalidates every portal with a key on file
 roughly hourly; `ensureFresh` skips anything still inside its 12h staleness window, so most ticks
@@ -278,3 +284,18 @@ Run through on a real portal; every box has to pass before the next phase starts
 - [ ] Opening the app renders the setup UI with the real portal domain and an empty number list
 - [ ] Dark mode toggle persists across a reload
 - [ ] Uninstalling flips `portals.status` to `uninstalled`
+
+## License
+
+Source-available under the [ACP GROUP Source-Available License](LICENSE). This is **not** an
+OSI-approved open-source license: you may use, modify and deploy the Software - including
+commercially and for paying customers - as long as the ACP GROUP attribution shipped with it
+(the "Powered by ACP GROUP" notice and the branding defaults in `src/brand.ts`) stays intact.
+
+Removing or replacing that attribution - including via the `BRAND_*` Worker vars - requires a
+commercial [white-label license](LICENSE-WHITE-LABEL.md); a 14-day white-label trial key is
+self-served from the app UI. Contact licensing@acp-24.com or https://acp-24.com.
+
+No trademark rights in the ACP marks are granted. The Software is provided as-is, with no
+warranty and no liability. See [LICENSE](LICENSE) for the full terms and [SECURITY.md](SECURITY.md)
+for vulnerability reporting.
