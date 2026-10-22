@@ -17,8 +17,8 @@ CREATE TABLE IF NOT EXISTS portals (
   application_token    TEXT,
   -- Value of CONNECTOR_VERSION at the last successful imconnector.register.
   connector_version    INTEGER,
-  -- ID of the registered "Garcia" chatbot for audio-sent notifications (task 4532).
-  garcia_bot_id        INTEGER,
+  -- ID of the registered audio-notification chatbot (posted after a voice note is sent).
+  audio_bot_id         INTEGER,
   installed_at         INTEGER NOT NULL,
   updated_at           INTEGER NOT NULL,
   status               TEXT NOT NULL DEFAULT 'active'   -- active | uninstalled

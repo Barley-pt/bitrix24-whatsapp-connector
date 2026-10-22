@@ -43,7 +43,7 @@ function mockRegisterCalls(types: number[] = []) {
     .intercept({ path: '/rest/placement.bind', method: 'POST' })
     .reply(200, { result: true })
     .times(1);
-  // Garcia chatbot registration (connector.ts's registerGarciaBot)
+  // Audio chatbot registration (connector.ts's registerAudioBot)
   origin
     .intercept({ path: '/rest/imbot.v2.Bot.register', method: 'POST' })
     .reply(200, { result: { bot: { id: 999 } } });

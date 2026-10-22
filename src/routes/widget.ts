@@ -12,7 +12,7 @@ import { wasender } from '../wasender';
  *
  * Two endpoints:
  *   GET /widget/audio-record   — serves the recording UI (opened by Bitrix in an iframe)
- *   POST /widget/send-audio — receives recorded audio, sends via Wasender, posts Garcia bot
+ *   POST /widget/send-audio — receives recorded audio, sends via Wasender, posts the audio bot
  *                                 notification in the chat
  */
 
@@ -448,26 +448,26 @@ widgetRoutes.post('/widget/send-audio', async (c) => {
      VALUES (?, ?, 'outbound', 'sent', ?, ?, ?, ?)`,
   ).bind(msgId, chat.session_id, msgId, chat.wa_jid, chat.wa_phone, nowSec()).run();
 
-  // Post Garcia bot notification in the chat
-  const garciaBotId = portal.garcia_bot_id;
-  if (garciaBotId) {
+  // Post the audio bot notification in the chat
+  const audioBotId = portal.audio_bot_id;
+  if (audioBotId) {
     console.warn(JSON.stringify({
-      msg: 'widget send-audio: posting Garcia bot notification',
+      msg: 'widget send-audio: posting audio bot notification',
       chatId: Number(bitrixChatId),
-      botId: garciaBotId,
+      botId: audioBotId,
     }));
     // Fire-and-forget: a bot notification failure is not critical.
     // Use imbot.message.add with SYSTEM=Y and SKIP_CONNECTOR=Y so the message
     // is visible only to operators and NOT forwarded to the customer on WhatsApp.
     const promise = callMethod(c.env, portal, 'imbot.message.add', {
-      BOT_ID: garciaBotId,
+      BOT_ID: audioBotId,
       DIALOG_ID: 'chat' + bitrixChatId,
       MESSAGE: 'Voice message sent via WhatsApp',
       SYSTEM: 'Y',
       SKIP_CONNECTOR: 'Y',
     }).catch((err) => {
       console.warn(JSON.stringify({
-        msg: 'widget send-audio: Garcia bot notification failed',
+        msg: 'widget send-audio: audio bot notification failed',
         error: err instanceof Error ? err.message : String(err),
       }));
     });

@@ -125,7 +125,7 @@ export async function updatePortalBotId(
   portalId: string,
   botId: number,
 ): Promise<void> {
-  await env.DB.prepare('UPDATE portals SET garcia_bot_id = ?, updated_at = ? WHERE id = ?')
+  await env.DB.prepare('UPDATE portals SET audio_bot_id = ?, updated_at = ? WHERE id = ?')
     .bind(botId, nowSec(), portalId)
     .run();
 }

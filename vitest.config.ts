@@ -34,7 +34,7 @@ export default defineWorkersConfig({
             // base64 of 32 bytes
             TOKEN_ENC_KEY: 'K5xN2vQ8sYb1mZ3pR7tW9cF4hJ6kL0nA2dG5jH8uP1s=',
             LICENSE_SERVER_URL: 'https://maestro.test',
-            LICENSE_PRODUCT: 'garcia-relay',
+            LICENSE_PRODUCT: 'wa-connector',
             LICENSE_PUBLIC_KEY: 'test-public-key',
             LICENSE_ENFORCE: 'false',
             WASENDER_BASE_URL: 'https://wasender.test',

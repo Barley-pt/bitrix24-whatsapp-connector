@@ -1522,7 +1522,7 @@ describe('processInboundMessage: license enforcement (LICENSE_ENFORCE=true)', ()
       status: 'active',
       expires_at: null,
       features: { max_conversations_per_month: 1 },
-      customer_name: 'Garcia',
+      customer_name: 'Acme',
       grace_days: 7,
       issued_at: '2026-01-01T00:00:00Z',
       signed_at: '2026-08-06T00:00:00Z',

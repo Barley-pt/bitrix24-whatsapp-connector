@@ -152,7 +152,7 @@ export interface PortalRow {
   refresh_token: string;
   application_token: string | null;
   connector_version: number | null;
-  garcia_bot_id: number | null;
+  audio_bot_id: number | null;
   installed_at: number;
   updated_at: number;
   status: string;

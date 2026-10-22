@@ -11,7 +11,7 @@ import { fromBase64, nowSec } from './util';
  * acp-license-manager/src/signing.ts; canonicalJson/canonicalPayload below MUST stay byte-for-byte
  * identical to that source (and to the companion app's copy) or every signature fails to verify.
  *
- * Model: one product per app (`env.LICENSE_PRODUCT`, "garcia-relay" for this app - see
+ * Model: one product per app (`env.LICENSE_PRODUCT`, "wa-connector" for this app - see
  * wrangler.jsonc), many licenses under it, one activation per portal. Fail-closed: no key, no
  * envelope, or a signature that does not verify all mean unlicensed.
  */

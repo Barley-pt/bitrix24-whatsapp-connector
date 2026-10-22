@@ -92,7 +92,7 @@ export async function ensureConnectorRegistered(
   }
   await bindDynamicCrmTabPlacements(env, portal);
   await bindAudioRecorder(env, portal);
-  await registerGarciaBot(env, portal);
+  await registerAudioBot(env, portal);
 
   await setConnectorVersion(env, portal.id, target);
   return true;
@@ -298,18 +298,18 @@ function bindAudioRecorder(env: Env, portal: PortalRow): Promise<void> {
 }
 
 /**
- * Register the "Garcia" chatbot for posting audio-sent notifications.
+ * Register the audio-notification chatbot (posted after a voice note is sent from the widget).
  * Idempotent -- re-calling with the same code returns the existing bot.
  */
-async function registerGarciaBot(env: Env, portal: PortalRow): Promise<void> {
+async function registerAudioBot(env: Env, portal: PortalRow): Promise<void> {
   const result = await callMethod<{ bot: { id: number } }>(env, portal, 'imbot.v2.Bot.register', {
     fields: {
-      code: 'garcia_audio_bot',
+      code: 'wa_audio_bot',
       type: 'bot',
       isSupportOpenline: true,
       eventMode: 'webhook',
-      webhookUrl: `${env.PUBLIC_URL}/bot/garcia`,
-      properties: { name: 'Garcia', workPosition: 'WhatsApp Audio', color: 'green' },
+      webhookUrl: `${env.PUBLIC_URL}/bot/audio`,
+      properties: { name: 'WhatsApp Audio', workPosition: 'WhatsApp Audio', color: 'green' },
     },
   });
   if (result?.bot?.id) {

@@ -395,7 +395,7 @@ describe('POST /api/sessions/:id/group-messages', () => {
         status: 'active',
         expires_at: null,
         features: { group_conversations: groupConversations },
-        customer_name: 'Garcia',
+        customer_name: 'Acme',
         grace_days: 7,
         issued_at: '2026-01-01T00:00:00Z',
         signed_at: '2026-08-06T00:00:00Z',

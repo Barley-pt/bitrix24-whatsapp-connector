@@ -18,8 +18,8 @@ const app = new Hono<{ Bindings: Env }>();
 
 app.get('/health', (c) => c.json({ ok: true, version: c.env.APP_VERSION }));
 
-// Garcia chatbot webhook — must respond 200 to any POST (event deliveries we ignore).
-app.post('/bot/garcia', (c) => c.text('ok', 200));
+// Audio-notification chatbot webhook — must respond 200 to any POST (event deliveries we ignore).
+app.post('/bot/audio', (c) => c.text('ok', 200));
 
 // Registered before the mounts so it runs ahead of each group's own auth. Deliberately not on
 // /health (uptime checks), /media/* (signed proxy token), /events/* (Bitrix posts straight to the

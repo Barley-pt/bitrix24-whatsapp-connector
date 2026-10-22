@@ -9,7 +9,7 @@ import { toBase64 } from '../src/util';
 import { applySchema, resetDb } from './helpers';
 
 const MAESTRO = 'https://maestro.test';
-const PRODUCT = 'garcia-relay'; // matches vitest.config.ts's LICENSE_PRODUCT
+const PRODUCT = 'wa-connector'; // matches vitest.config.ts's LICENSE_PRODUCT
 
 /** A fresh Ed25519 keypair per test file - independent of the real Maestro key, isolated from
  * every other test's LICENSE_PUBLIC_KEY value (license.ts caches public keys by the raw string). */
@@ -41,7 +41,7 @@ function fixtureEnvelope(overrides: Partial<LicenseEnvelope> = {}): Omit<License
     status: 'active',
     expires_at: null,
     features: { max_numbers: 3, max_conversations_per_month: 100 },
-    customer_name: 'Garcia',
+    customer_name: 'Acme',
     grace_days: 7,
     issued_at: '2026-01-01T00:00:00Z',
     signed_at: '2026-08-06T00:00:00Z',
