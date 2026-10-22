@@ -343,6 +343,24 @@ async function fetchWorkersSubdomain(accountId, token) {
   }
 }
 
+// wrangler whoami does not print account UUIDs for account-owned tokens (cfat_*), so fall back
+// to the /accounts API - the same token that authenticated whoami can read it.
+async function fetchAccountIds(token) {
+  if (!token) return [];
+  try {
+    const res = await fetch('https://api.cloudflare.com/client/v4/accounts', {
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+    const body = await res.json();
+    return body?.success && Array.isArray(body.result)
+      ? body.result.map((a) => a.id).filter((id) => typeof id === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 function ensureD1() {
   // info first (read-only): an existing database never needs creating.
   const existing = wrangler(['d1', 'info', D1_NAME]);
@@ -516,14 +534,20 @@ async function main() {
     );
   }
   const whoamiAccounts = [...new Set(whoami.out.match(new RegExp(UUID_RE, 'g')) ?? [])];
+  let knownAccounts = whoamiAccounts;
+  if (knownAccounts.length === 0) {
+    // Account-owned API tokens print no UUIDs in `wrangler whoami` - ask the API directly.
+    knownAccounts = await fetchAccountIds(token);
+    if (knownAccounts.length > 0) info(`account ${dim(knownAccounts[0])} (from the Cloudflare API)`);
+  }
   if (!cfg.accountId) {
-    if (whoamiAccounts.length === 1) {
-      cfg.accountId = whoamiAccounts[0];
+    if (knownAccounts.length === 1) {
+      cfg.accountId = knownAccounts[0];
       info(`account id ${dim(cfg.accountId)} (from wrangler whoami)`);
-    } else if (whoamiAccounts.length > 1) {
+    } else if (knownAccounts.length > 1) {
       warn('this token can see several accounts:');
-      whoamiAccounts.forEach((id, i) => info(`  [${i + 1}] ${id}`));
-      cfg.accountId = await ask('Cloudflare account id to use', { def: whoamiAccounts[0] });
+      knownAccounts.forEach((id, i) => info(`  [${i + 1}] ${id}`));
+      cfg.accountId = await ask('Cloudflare account id to use', { def: knownAccounts[0] });
     }
   }
   process.env.CLOUDFLARE_ACCOUNT_ID = cfg.accountId || '';
