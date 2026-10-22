@@ -5,6 +5,7 @@
   "description": "Bitrix24 WhatsApp Connector - Bitrix24 Open Channel x WasenderAPI",
   "scripts": {
     "dev": "wrangler dev",
+    "setup": "node scripts/setup.mjs",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit && tsc --noEmit -p ui/tsconfig.json",
     "test": "vitest run",
