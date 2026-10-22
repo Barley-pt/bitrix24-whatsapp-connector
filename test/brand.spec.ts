@@ -3,76 +3,15 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { resolveBranding } from '../src/brand';
 import { upsertPortal } from '../src/db';
 import worker from '../src/index';
-import { canonicalPayload } from '../src/license';
 import { issueSession } from '../src/session';
-import type { Env, LicenseEnvelope, PortalRow } from '../src/types';
-import { toBase64 } from '../src/util';
-import { applySchema, resetDb } from './helpers';
+import type { Env, PortalRow } from '../src/types';
+import { applySchema, resetDb, seedSignedLicense } from './helpers';
 
-const PRODUCT = 'wa-connector'; // matches vitest.config.ts's LICENSE_PRODUCT
-const SIGNED_AT = new Date();
-
-/** Fresh Ed25519 keypair per test file - license.ts caches public keys by raw string. */
-async function generateKeypair() {
-  const { publicKey, privateKey } = (await crypto.subtle.generateKey({ name: 'Ed25519' }, true, [
-    'sign',
-    'verify',
-  ])) as CryptoKeyPair;
-  const spki = (await crypto.subtle.exportKey('spki', publicKey)) as ArrayBuffer;
-  return { privateKey, publicKeyB64: toBase64(new Uint8Array(spki)) };
-}
-
-function unsignedEnvelope(
-  portal: PortalRow,
-  features: Record<string, unknown>,
-): Omit<LicenseEnvelope, 'signature'> {
-  return {
-    valid: true,
-    license_key: 'ACP-TEST-TEST-TEST-TEST',
-    product: PRODUCT,
-    portal_domain: portal.bitrix_domain,
-    tier: 'pro',
-    status: 'active',
-    expires_at: null,
-    features,
-    customer_name: 'Acme',
-    grace_days: 7,
-    issued_at: SIGNED_AT.toISOString(),
-    // Signed now, not a fixed past date: licensed requires signed_at + grace_days to be in the
-    // future (a hardcoded fixture would rot exactly like the expired test keys did).
-    signed_at: SIGNED_AT.toISOString(),
-  };
-}
-
-/** Store a signed envelope straight into D1's licenses cache (signature is re-verified on read). */
+/** Store a signed envelope straight into D1's licenses cache (signature is re-verified on read).
+ * Signed at test time by seedSignedLicense - a hardcoded signed_at would rot the moment its grace
+ * window passed. */
 async function seedLicense(portal: PortalRow, features: Record<string, unknown>): Promise<void> {
-  const { privateKey, publicKeyB64 } = await generateKeypair();
-  (env as { LICENSE_PUBLIC_KEY: string }).LICENSE_PUBLIC_KEY = publicKeyB64;
-
-  const unsigned = unsignedEnvelope(portal, features);
-  const sig = await crypto.subtle.sign(
-    { name: 'Ed25519' },
-    privateKey,
-    new TextEncoder().encode(canonicalPayload(unsigned as LicenseEnvelope)),
-  );
-  const envelope: LicenseEnvelope = { ...unsigned, signature: toBase64(new Uint8Array(sig)) };
-
-  await env.DB.prepare(
-    `INSERT INTO licenses (portal_id, license_key, tier, status, expires_at, grace_days, signed_at, features, envelope, last_checked_at)
-     VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
-      portal.id,
-      envelope.license_key,
-      envelope.tier,
-      envelope.status,
-      envelope.grace_days,
-      Math.floor(Date.parse(envelope.signed_at) / 1000),
-      JSON.stringify(envelope.features),
-      JSON.stringify(envelope),
-      Math.floor(Date.now() / 1000),
-    )
-    .run();
+  await seedSignedLicense(portal.id, { portal_domain: portal.bitrix_domain, features });
 }
 
 async function seedPortal(memberId = 'member-1'): Promise<PortalRow> {

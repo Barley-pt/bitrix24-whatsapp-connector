@@ -35,6 +35,9 @@ export default defineWorkersConfig({
             TOKEN_ENC_KEY: 'K5xN2vQ8sYb1mZ3pR7tW9cF4hJ6kL0nA2dG5jH8uP1s=',
             LICENSE_SERVER_URL: 'https://maestro.test',
             LICENSE_PRODUCT: 'wa-connector',
+            // Deliberately not a real key: it imports as null, so anything signed by it fails
+            // closed. Tests that need a verifiable license sign a fixture at test time with a
+            // per-test Ed25519 keypair and swap this binding for that key (test/helpers.ts).
             LICENSE_PUBLIC_KEY: 'test-public-key',
             LICENSE_ENFORCE: 'false',
             WASENDER_BASE_URL: 'https://wasender.test',

@@ -2,52 +2,19 @@ import { createExecutionContext, env, fetchMock, waitOnExecutionContext } from '
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { upsertPortal } from '../src/db';
 import worker from '../src/index';
-import { canonicalPayload, verifyEnvelope } from '../src/license';
+import { verifyEnvelope } from '../src/license';
 import { issueSession } from '../src/session';
-import type { LicenseEnvelope, LicenseRow } from '../src/types';
-import { toBase64 } from '../src/util';
-import { applySchema, resetDb } from './helpers';
+import type { LicenseRow } from '../src/types';
+import {
+  applySchema,
+  generateLicenseKeypair,
+  licenseFixture,
+  resetDb,
+  signLicenseEnvelope,
+} from './helpers';
 
 const MAESTRO = 'https://maestro.test';
 const PRODUCT = 'wa-connector'; // matches vitest.config.ts's LICENSE_PRODUCT
-
-/** A fresh Ed25519 keypair per test file - independent of the real Maestro key, isolated from
- * every other test's LICENSE_PUBLIC_KEY value (license.ts caches public keys by the raw string). */
-async function generateKeypair() {
-  const { publicKey, privateKey } = (await crypto.subtle.generateKey({ name: 'Ed25519' }, true, [
-    'sign',
-    'verify',
-  ])) as CryptoKeyPair;
-  const spki = (await crypto.subtle.exportKey('spki', publicKey)) as ArrayBuffer;
-  return { privateKey, publicKeyB64: toBase64(new Uint8Array(spki)) };
-}
-
-async function signEnvelope(privateKey: CryptoKey, envelope: Omit<LicenseEnvelope, 'signature'>): Promise<LicenseEnvelope> {
-  const sig = await crypto.subtle.sign(
-    { name: 'Ed25519' },
-    privateKey,
-    new TextEncoder().encode(canonicalPayload(envelope as LicenseEnvelope)),
-  );
-  return { ...envelope, signature: toBase64(new Uint8Array(sig)) };
-}
-
-function fixtureEnvelope(overrides: Partial<LicenseEnvelope> = {}): Omit<LicenseEnvelope, 'signature'> {
-  return {
-    valid: true,
-    license_key: 'ACP-TEST-TEST-TEST-TEST',
-    product: PRODUCT,
-    portal_domain: 'member-1.bitrix24.com',
-    tier: 'pro',
-    status: 'active',
-    expires_at: null,
-    features: { max_numbers: 3, max_conversations_per_month: 100 },
-    customer_name: 'Acme',
-    grace_days: 7,
-    issued_at: '2026-01-01T00:00:00Z',
-    signed_at: '2026-08-06T00:00:00Z',
-    ...overrides,
-  };
-}
 
 async function seedPortal(memberId = 'member-1') {
   return upsertPortal(env, {
@@ -107,8 +74,8 @@ afterEach(() => fetchMock.assertNoPendingInterceptors());
 
 describe('canonical signing (must match acp-license-manager)', () => {
   it('verifies a correctly signed envelope', async () => {
-    const { privateKey, publicKeyB64 } = await generateKeypair();
-    const envelope = await signEnvelope(privateKey, fixtureEnvelope());
+    const { privateKey, publicKeyB64 } = await generateLicenseKeypair();
+    const envelope = await signLicenseEnvelope(privateKey, licenseFixture());
 
     const ok = await verifyEnvelope(publicKeyB64, envelope, {
       product: PRODUCT,
@@ -118,8 +85,8 @@ describe('canonical signing (must match acp-license-manager)', () => {
   });
 
   it('rejects a tampered field even though the signature blob is unchanged', async () => {
-    const { privateKey, publicKeyB64 } = await generateKeypair();
-    const envelope = await signEnvelope(privateKey, fixtureEnvelope());
+    const { privateKey, publicKeyB64 } = await generateLicenseKeypair();
+    const envelope = await signLicenseEnvelope(privateKey, licenseFixture());
     const tampered = { ...envelope, tier: 'lifetime' as const };
 
     expect(
@@ -128,8 +95,8 @@ describe('canonical signing (must match acp-license-manager)', () => {
   });
 
   it('rejects an envelope signed for a different portal (anti-copy binding)', async () => {
-    const { privateKey, publicKeyB64 } = await generateKeypair();
-    const envelope = await signEnvelope(privateKey, fixtureEnvelope({ portal_domain: 'other.bitrix24.com' }));
+    const { privateKey, publicKeyB64 } = await generateLicenseKeypair();
+    const envelope = await signLicenseEnvelope(privateKey, licenseFixture({ portal_domain: 'other.bitrix24.com' }));
 
     expect(
       await verifyEnvelope(publicKeyB64, envelope, { product: PRODUCT, portalDomain: 'member-1.bitrix24.com' }),
@@ -137,9 +104,9 @@ describe('canonical signing (must match acp-license-manager)', () => {
   });
 
   it('rejects a signature made with a different key', async () => {
-    const { publicKeyB64 } = await generateKeypair();
-    const other = await generateKeypair();
-    const envelope = await signEnvelope(other.privateKey, fixtureEnvelope());
+    const { publicKeyB64 } = await generateLicenseKeypair();
+    const other = await generateLicenseKeypair();
+    const envelope = await signLicenseEnvelope(other.privateKey, licenseFixture());
 
     expect(
       await verifyEnvelope(publicKeyB64, envelope, { product: PRODUCT, portalDomain: 'member-1.bitrix24.com' }),
@@ -178,10 +145,10 @@ describe('/admin/portals/:domain/license', () => {
 
   it('activates a key, verifies the signature, and persists the envelope to D1', async () => {
     const portal = await seedPortal();
-    const { privateKey, publicKeyB64 } = await generateKeypair();
+    const { privateKey, publicKeyB64 } = await generateLicenseKeypair();
     (env as { LICENSE_PUBLIC_KEY: string }).LICENSE_PUBLIC_KEY = publicKeyB64;
 
-    const envelope = await signEnvelope(privateKey, fixtureEnvelope());
+    const envelope = await signLicenseEnvelope(privateKey, licenseFixture());
     let sentBody: Record<string, unknown> = {};
     fetchMock
       .get(MAESTRO)
@@ -222,8 +189,8 @@ describe('/admin/portals/:domain/license', () => {
   it('does not persist an envelope whose signature fails verification', async () => {
     const portal = await seedPortal();
     // LICENSE_PUBLIC_KEY stays the vitest.config.ts placeholder, which cannot verify anything.
-    const { privateKey } = await generateKeypair();
-    const envelope = await signEnvelope(privateKey, fixtureEnvelope());
+    const { privateKey } = await generateLicenseKeypair();
+    const envelope = await signLicenseEnvelope(privateKey, licenseFixture());
 
     fetchMock.get(MAESTRO).intercept({ path: '/v1/activate', method: 'POST' }).reply(200, envelope);
 
@@ -239,11 +206,11 @@ describe('/admin/portals/:domain/license', () => {
 
   it('clears the cached envelope on an authoritative REVOKED response', async () => {
     const portal = await seedPortal();
-    const { privateKey, publicKeyB64 } = await generateKeypair();
+    const { privateKey, publicKeyB64 } = await generateLicenseKeypair();
     (env as { LICENSE_PUBLIC_KEY: string }).LICENSE_PUBLIC_KEY = publicKeyB64;
 
     // First, a real activation.
-    const envelope = await signEnvelope(privateKey, fixtureEnvelope());
+    const envelope = await signLicenseEnvelope(privateKey, licenseFixture());
     fetchMock.get(MAESTRO).intercept({ path: '/v1/activate', method: 'POST' }).reply(200, envelope);
     await adminCall('/admin/portals/member-1.bitrix24.com/license', {
       method: 'POST',

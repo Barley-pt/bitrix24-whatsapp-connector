@@ -3,11 +3,9 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { decrypt } from '../src/crypto';
 import { upsertPortal } from '../src/db';
 import worker from '../src/index';
-import { canonicalPayload } from '../src/license';
 import { issueSession } from '../src/session';
-import type { LicenseEnvelope, SessionRow } from '../src/types';
-import { toBase64 } from '../src/util';
-import { applySchema, resetDb } from './helpers';
+import type { SessionRow } from '../src/types';
+import { applySchema, resetDb, seedSignedLicense } from './helpers';
 
 const WASENDER = 'https://wasender.test';
 
@@ -379,50 +377,10 @@ describe('POST /api/sessions/:id/group-messages', () => {
 
   describe('license enforcement (LICENSE_ENFORCE=true)', () => {
     async function seedLicense(portalId: string | undefined, domain: string, groupConversations: boolean) {
-      const { publicKey, privateKey } = (await crypto.subtle.generateKey({ name: 'Ed25519' }, true, [
-        'sign',
-        'verify',
-      ])) as CryptoKeyPair;
-      const spki = (await crypto.subtle.exportKey('spki', publicKey)) as ArrayBuffer;
-      (env as { LICENSE_PUBLIC_KEY: string }).LICENSE_PUBLIC_KEY = toBase64(new Uint8Array(spki));
-
-      const unsigned: Omit<LicenseEnvelope, 'signature'> = {
-        valid: true,
-        license_key: 'ACP-TEST-TEST-TEST-TEST',
-        product: env.LICENSE_PRODUCT,
+      await seedSignedLicense(portalId, {
         portal_domain: domain,
-        tier: 'pro',
-        status: 'active',
-        expires_at: null,
         features: { group_conversations: groupConversations },
-        customer_name: 'Acme',
-        grace_days: 7,
-        issued_at: '2026-01-01T00:00:00Z',
-        signed_at: '2026-08-06T00:00:00Z',
-      };
-      const sig = await crypto.subtle.sign(
-        { name: 'Ed25519' },
-        privateKey,
-        new TextEncoder().encode(canonicalPayload(unsigned as LicenseEnvelope)),
-      );
-      const envelope: LicenseEnvelope = { ...unsigned, signature: toBase64(new Uint8Array(sig)) };
-
-      await env.DB.prepare(
-        `INSERT INTO licenses (portal_id, license_key, tier, status, expires_at, grace_days, signed_at, features, envelope, last_checked_at)
-         VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
-      )
-        .bind(
-          portalId,
-          envelope.license_key,
-          envelope.tier,
-          envelope.status,
-          envelope.grace_days,
-          Math.floor(Date.parse(envelope.signed_at) / 1000),
-          JSON.stringify(envelope.features),
-          JSON.stringify(envelope),
-          Math.floor(Date.now() / 1000),
-        )
-        .run();
+      });
     }
 
     // Never inside beforeAll/afterAll - see inbound.spec.ts's identical helper for why.
