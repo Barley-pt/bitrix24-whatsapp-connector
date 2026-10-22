@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: test (node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run ui:build
+
+  sanitization:
+    # This repo is a sanitized public export. Nothing internal may leak back in: no internal
+    # hostnames, portal ids, relay addresses or personal identifiers outside the handful of
+    # files where the ACP GROUP branding/contact address is intentional and required.
+    name: sanitization gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No internal strings outside allowlisted files
+        run: |
+          set -euo pipefail
+
+          # Patterns are bracket-escaped so this workflow file does not trip its own gate:
+          # the escaped form still matches the target string, but the literal pattern text
+          # in this file does not.
+          leak='94[.]46[.]|relay[.]acp|ga[r]cia|A[C]P[-]QY5Z|b24[-]ynumvs|el[y]zee|app[.]6a73920b|Messa[g]e2Ga[r]cia|acp[z]ap|jorge[-]f[-]orge'
+          brand='a[c]p[-]24'
+
+          # The brand pattern may only appear where the ACP GROUP branding or contact
+          # address is shipped on purpose: the branding module and its test, the README's branding/licensing sections,
+          # the Maestro URL in wrangler.jsonc, and the legal/ops docs.
+          brand_allowed='src/brand\.ts|test/brand\.spec\.ts|README\.md|wrangler\.jsonc|LICENSE|LICENSE-WHITE-LABEL\.md|SECURITY\.md'
+
+          fail=0
+
+          for tier in "$leak" "$brand"; do
+            hits=$(grep -rniE "$tier" --exclude-dir=node_modules --exclude-dir=.git . || true)
+            [ -z "$hits" ] && continue
+            echo "Matches for $tier:"
+            printf '%s\n' "$hits"
+            echo
+            if [ "$tier" = "$brand" ]; then
+              bad=$(printf '%s\n' "$hits" | sed 's/^\.\///' | cut -d: -f1 | sort -u | grep -vE "^($brand_allowed)$" || true)
+            else
+              bad=$(printf '%s\n' "$hits" | sed 's/^\.\///' | cut -d: -f1 | sort -u || true)
+            fi
+            if [ -n "$bad" ]; then
+              echo "OFFENDING FILES (not allowlisted):"
+              printf '%s\n' "$bad"
+              echo
+              fail=1
+            fi
+          done
+
+          if [ "$fail" -ne 0 ]; then
+            echo "Sanitization gate failed - remove the internal strings above or justify them in the allowlist."
+            exit 1
+          fi
+          echo "Sanitization gate passed."
