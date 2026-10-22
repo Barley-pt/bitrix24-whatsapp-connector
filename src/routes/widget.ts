@@ -259,8 +259,8 @@ export async function verifyAudioToken(
 
 widgetRoutes.get('/widget/audio-record', async (c) => {
   const dialogId = c.req.query('dialogId') ?? '';
-  const domain = c.req.query('DOMAIN') ?? 'acp.bitrix24.com';
-  // Derive frame-ancestors from the portal domain (e.g. elyzee.bitrix24.ae → *.bitrix24.ae)
+  const domain = c.req.query('DOMAIN') ?? 'your-portal.bitrix24.com';
+  // Derive frame-ancestors from the portal domain (e.g. example.bitrix24.ae → *.bitrix24.ae)
   const baseDomain = domain.replace(/^[^.]*\./, '*.');
   if (!dialogId) return c.text('Missing dialogId', 400);
 
@@ -292,7 +292,7 @@ widgetRoutes.post('/widget/audio-record', async (c) => {
   try { options = JSON.parse(raw); } catch { options = {}; }
 
   const dialogId = options.dialogId ?? c.req.query('dialogId') ?? '';
-  const domain = c.req.query('DOMAIN') ?? 'acp.bitrix24.com';
+  const domain = c.req.query('DOMAIN') ?? 'your-portal.bitrix24.com';
   const baseDomain = domain.replace(/^[^.]*\./, '*.');
   if (!dialogId) return c.text('Missing dialogId', 400);
 

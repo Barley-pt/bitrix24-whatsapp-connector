@@ -57,10 +57,10 @@ app.onError((err, c) => {
 });
 
 const QUEUE_HANDLERS: Record<string, (env: Env, body: unknown) => Promise<void>> = {
-  'acpzap-inbound': processInboundMessage as (env: Env, body: unknown) => Promise<void>,
-  'acpzap-inbound-dlq': markDeadLettered as (env: Env, body: unknown) => Promise<void>,
-  'acpzap-outbound': processOutboundMessage as (env: Env, body: unknown) => Promise<void>,
-  'acpzap-outbound-dlq': markOutboundDeadLettered as (env: Env, body: unknown) => Promise<void>,
+  'bwac-inbound': processInboundMessage as (env: Env, body: unknown) => Promise<void>,
+  'bwac-inbound-dlq': markDeadLettered as (env: Env, body: unknown) => Promise<void>,
+  'bwac-outbound': processOutboundMessage as (env: Env, body: unknown) => Promise<void>,
+  'bwac-outbound-dlq': markOutboundDeadLettered as (env: Env, body: unknown) => Promise<void>,
 };
 
 /**
@@ -70,7 +70,7 @@ const QUEUE_HANDLERS: Record<string, (env: Env, body: unknown) => Promise<void>>
 const ACCOUNT_PROTECTION_DELAY_SEC = 6;
 
 /**
- * Four queues feed this: acpzap-inbound/acpzap-outbound (the happy paths) and their respective
+ * Four queues feed this: bwac-inbound/bwac-outbound (the happy paths) and their respective
  * dead-letter queues (everything that exhausted retries, wired to the mark*DeadLettered
  * handlers). Each message is acked/retried individually so one bad message in a batch doesn't
  * take the rest down with it - a bare `throw` would fail the whole batch instead.

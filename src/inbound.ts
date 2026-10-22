@@ -162,8 +162,8 @@ export async function processInboundMessage(
   // The external chat.id Bitrix finds/creates the Open Line chat by (CONNECTOR+LINE+CHAT_ID; user.id
   // also participates while CHAT_GROUP is false). It used to be the raw remoteJid, so a contact
   // whose jid flipped from phone to LID got a SECOND Bitrix chat and the operator's open one went
-  // silent - "my messages are sent but incoming never arrives". Live: acp line 2, 5511964253002 in
-  // chats 5398 (phone jid) + 5400 (LID); customer line 3, 971569863429 in 160777 + 160779, created
+  // silent - "my messages are sent but incoming never arrives". Observed on two lines: line 2,
+  // 5511999999999 in chats 5398 (phone jid) + 5400 (LID); line 3, 971500000000 in 160777 + 160779, created
   // 3 minutes apart mid-conversation. Now: whatever id the chat was created with (chat_map.chat_id),
   // or the deterministic canonical id for a contact Bitrix has never seen.
   const chatId = contact ? resolveChatId(contact) : newChatId(waJid, waPhone);
@@ -529,7 +529,7 @@ async function processInboundNote(env: Env, msg: InboundNoteQueueMessage): Promi
 /**
  * A messages.upsert delivery with fromMe: true - either a message genuinely typed on the
  * business phone's WhatsApp app (post to Bitrix, labeled SENT FROM MOBILE) or Wasender's own echo
- * of a message ACPZap just sent through outbound.ts (recognize it and skip). Both share one
+ * of a message the connector just sent through outbound.ts (recognize it and skip). Both share one
  * idempotency claim keyed by the WhatsApp message id, taken before the echo check runs, so a
  * webhook redelivery can never re-run the match against an already-claimed outbound row or post
  * to Bitrix twice - see claimMessageLog.
@@ -662,7 +662,7 @@ async function processAppSentMessage(
 }
 
 /**
- * messages.upsert echoes both what was typed on the phone and what ACPZap itself sent through
+ * messages.upsert echoes both what was typed on the phone and what the connector itself sent through
  * outbound.ts, and there is no id shared between an outbound send and its webhook echo to join
  * on (see schema.sql's comment on message_log's echo_* columns). This is a pragmatic stand-in:
  * match against a 'sent' outbound row in the same session, sent within the last ten minutes, not
@@ -1092,7 +1092,7 @@ export async function upsertChatMap(
  * worth caching: writing the phone fallback into chat_map.wa_name would make it stick permanently
  * and stop a genuine name from ever landing on a later message.
  *
- * Failure here is expected, not exceptional. Confirmed live on b24-ynumvs 2026-08-12: contact 902
+ * Failure here is expected, not exceptional. Confirmed live on example 2026-08-12: contact 902
  * was created as "Guest" because this returned undefined - Wasender 404s a contact WhatsApp has
  * not synced yet, and there is no pushName on the webhook to fall back to (docs/wasenderapi.md).
  *
@@ -1145,7 +1145,7 @@ async function resolveContact(
  * What to put in `user.name`. Never undefined: handing Bitrix no name is what makes it invent
  * "Guest", and a Guest contact is worse than useless - every unnamed WhatsApp contact collapses
  * into an indistinguishable pile of them in the CRM, and the deal the tracker creates inherits the
- * same title ("Guest - Whatsapp", deal 976 on b24-ynumvs).
+ * same title ("Guest - Whatsapp", deal 976 on example).
  *
  * A phone number is always known and always beats that. Groups get a generic label instead,
  * because waPhone holds the group's JID there rather than a number worth showing anyone.

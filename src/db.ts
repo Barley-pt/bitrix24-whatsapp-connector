@@ -22,7 +22,7 @@ export async function getPortalById(env: Env, portalId: string): Promise<PortalR
 }
 
 /**
- * Admin lookup by domain (ACP knows a customer's Bitrix24 domain, not their member_id or portal
+ * Admin lookup by domain (the operator knows a customer's Bitrix24 domain, not their member_id or portal
  * id). idx_portals_domain is not unique - a domain can be revisited across an uninstall/reinstall
  * - so this is scoped to the current active install, matching how every other portal lookup
  * treats 'uninstalled' rows as gone.

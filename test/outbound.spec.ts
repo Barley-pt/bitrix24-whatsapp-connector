@@ -18,7 +18,7 @@ const BITRIX = 'https://member-1.bitrix24.com';
 
 const CREATED = {
   id: 106487,
-  name: 'ACP UAE',
+  name: 'Acme Support',
   phone_number: '+971557801481',
   api_key: 'session-api-key-abc',
   webhook_secret: 'webhook-secret-xyz',
@@ -67,7 +67,7 @@ async function seedSession(): Promise<{ portalId: string; sessionId: string }> {
 
   const res = await apiCall('/api/sessions', 'member-1', {
     method: 'POST',
-    body: JSON.stringify({ name: 'ACP UAE', phoneNumber: '+971557801481' }),
+    body: JSON.stringify({ name: 'Acme Support', phoneNumber: '+971557801481' }),
   });
   const sessionId = ((await res.json()) as { session: { id: string } }).session.id;
   return { portalId: portal.id, sessionId };
@@ -172,7 +172,7 @@ describe('processOutboundMessage: happy path', () => {
       })
       .reply(200, { result: { SUCCESS: true, DATA: [] } });
 
-    const result = await runQueue(batchOf('acpzap-outbound', [outboundMessage(portalId)]));
+    const result = await runQueue(batchOf('bwac-outbound', [outboundMessage(portalId)]));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
     expect(sendBody.to).toBe('+971500000000');
@@ -180,7 +180,7 @@ describe('processOutboundMessage: happy path', () => {
     // tags themselves are removed, not surrounding whitespace.
     expect(sendBody.text).toBe('Klaus Weber: \nGuten Tag!');
 
-    expect(deliveryBody.CONNECTOR).toBe('acp_whatsapp');
+    expect(deliveryBody.CONNECTOR).toBe('whatsapp_connector');
     expect(deliveryBody.LINE).toBe(12);
     const [msg] = deliveryBody.MESSAGES as [Record<string, unknown>];
     expect(msg.im).toStrictEqual({ chat_id: 1807, message_id: 86497 });
@@ -237,7 +237,7 @@ describe('processOutboundMessage: happy path', () => {
       .intercept({ path: '/rest/imconnector.send.status.delivery', method: 'POST' })
       .reply(200, { result: { SUCCESS: true, DATA: [] } });
 
-    const result = await runQueue(batchOf('acpzap-outbound', [outboundMessage(portalId, { waJid: '123@lid' })]));
+    const result = await runQueue(batchOf('bwac-outbound', [outboundMessage(portalId, { waJid: '123@lid' })]));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
     expect(sendBody.to).toBe('+971500000000');
@@ -258,8 +258,8 @@ describe('processOutboundMessage: happy path', () => {
       .intercept({ path: '/rest/imconnector.send.status.delivery', method: 'POST' })
       .reply(200, { result: { SUCCESS: true, DATA: [] } });
 
-    await runQueue(batchOf('acpzap-outbound', [outboundMessage(portalId)]));
-    const result = await runQueue(batchOf('acpzap-outbound', [outboundMessage(portalId)]));
+    await runQueue(batchOf('bwac-outbound', [outboundMessage(portalId)]));
+    const result = await runQueue(batchOf('bwac-outbound', [outboundMessage(portalId)]));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
     const rows = await env.DB.prepare(
@@ -306,7 +306,7 @@ describe('processOutboundMessage: attachments', () => {
 
     const sent = interceptSendAndDelivery();
     const result = await runQueue(
-      batchOf('acpzap-outbound', [outboundMessage(portalId, { files: [PHOTO] })]),
+      batchOf('bwac-outbound', [outboundMessage(portalId, { files: [PHOTO] })]),
     );
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
@@ -331,7 +331,7 @@ describe('processOutboundMessage: attachments', () => {
 
     const sent = interceptSendAndDelivery();
     await runQueue(
-      batchOf('acpzap-outbound', [
+      batchOf('bwac-outbound', [
         outboundMessage(portalId, { text: '', files: [{ link: '/x.pdf', name: 'report.pdf' }] }),
       ]),
     );
@@ -367,7 +367,7 @@ describe('processOutboundMessage: attachments', () => {
       .reply(200, { result: { SUCCESS: true, DATA: [] } });
 
     await runQueue(
-      batchOf('acpzap-outbound', [
+      batchOf('bwac-outbound', [
         outboundMessage(portalId, { files: [{ link: '/note.ogg', name: 'note.ogg' }] }),
       ]),
     );
@@ -390,7 +390,7 @@ describe('processOutboundMessage: attachments', () => {
     await seedChatMap(sessionId, '123@lid', '+971500000000');
 
     const sent = interceptSendAndDelivery();
-    await runQueue(batchOf('acpzap-outbound', [outboundMessage(portalId, { files: [PHOTO] })]));
+    await runQueue(batchOf('bwac-outbound', [outboundMessage(portalId, { files: [PHOTO] })]));
     const proxyUrl = sent.body().imageUrl as string;
 
     fetchMock
@@ -423,7 +423,7 @@ describe('processOutboundMessage: no chat mapping', () => {
     await bindToLine(sessionId, 12);
     // No seedChatMap call - this contact was never mapped by an inbound message.
 
-    const result = await runQueue(batchOf('acpzap-outbound', [outboundMessage(portalId)]));
+    const result = await runQueue(batchOf('bwac-outbound', [outboundMessage(portalId)]));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
     const log = await messageLogRow(sessionId, 86497);
@@ -443,7 +443,7 @@ describe('processOutboundMessage: nothing to send', () => {
     // send must not happen at all - Wasender rejects a request with neither text nor media, and a
     // reply that strips to "" would otherwise burn all five retries on it.
     const result = await runQueue(
-      batchOf('acpzap-outbound', [outboundMessage(portalId, { text: '[br]' })]),
+      batchOf('bwac-outbound', [outboundMessage(portalId, { text: '[br]' })]),
     );
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
@@ -469,7 +469,7 @@ describe('processOutboundMessage: rate limiting', () => {
     // getQueueResult().retryMessages doesn't surface delaySeconds in this SDK version, even
     // though the runtime API accepts it (confirmed live via debug logging) - spy on the message's
     // own retry() to check what index.ts actually called it with, instead of the harness summary.
-    const batch = batchOf('acpzap-outbound', [outboundMessage(portalId)]);
+    const batch = batchOf('bwac-outbound', [outboundMessage(portalId)]);
     const retrySpy = vi.spyOn(batch.messages[0]!, 'retry');
     const ctx = createExecutionContext();
     await worker.queue(batch, env, ctx);
@@ -494,7 +494,7 @@ describe('processOutboundMessage: rate limiting', () => {
         message: 'You have account protection enabled. You can only send 1 message every 5 seconds.',
       });
 
-    const batch = batchOf('acpzap-outbound', [outboundMessage(portalId)]);
+    const batch = batchOf('bwac-outbound', [outboundMessage(portalId)]);
     const retrySpy = vi.spyOn(batch.messages[0]!, 'retry');
     const ctx = createExecutionContext();
     await worker.queue(batch, env, ctx);
@@ -508,13 +508,13 @@ describe('processOutboundMessage: rate limiting', () => {
   });
 });
 
-describe('acpzap-outbound-dlq consumer', () => {
+describe('bwac-outbound-dlq consumer', () => {
   it('marks message_log failed once Cloudflare gives up retrying', async () => {
     const { portalId, sessionId } = await seedSession();
     await bindToLine(sessionId, 12);
     await seedChatMap(sessionId, '123@lid', '+971500000000');
 
-    const result = await runQueue(batchOf('acpzap-outbound-dlq', [outboundMessage(portalId)]));
+    const result = await runQueue(batchOf('bwac-outbound-dlq', [outboundMessage(portalId)]));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
     const log = await messageLogRow(sessionId, 86497);

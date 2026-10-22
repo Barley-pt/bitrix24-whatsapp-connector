@@ -4,7 +4,7 @@ import { nowSec, uuid } from './util';
 import { type SessionStatus, WasenderError, wasender } from './wasender';
 
 /**
- * Provisioning a number, end to end: create it under ACP's WasenderAPI account, then persist the
+ * Provisioning a number, end to end: create it under the master WasenderAPI account, then persist the
  * credentials it hands back. Wasender returns api_key and webhook_secret only at creation and on
  * the detail endpoint, so both are stored immediately or they are lost.
  */
@@ -57,7 +57,7 @@ export async function provisionSession(
     `INSERT INTO whatsapp_sessions
        (id, portal_id, provisioning_mode, wasender_api_key, wasender_session_id, webhook_secret,
         webhook_token, phone_number, status, last_status_at, created_at)
-     VALUES (?, ?, 'acp', ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, 'master', ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
@@ -294,7 +294,7 @@ export async function refreshSessionsStatus(
   );
 }
 
-/** Remove upstream first: deleting our row first would orphan a live session under ACP's plan. */
+/** Remove upstream first: deleting our row first would orphan a live session under the master account's plan. */
 export async function removeSession(env: Env, row: SessionRow): Promise<void> {
   if (row.wasender_session_id) {
     await wasender(env).deleteSession(row.wasender_session_id);

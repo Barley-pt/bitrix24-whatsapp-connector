@@ -49,13 +49,14 @@ export function parsePhpFormData(form: FormData): Record<string, unknown> {
 /**
  * Real client IP.
  *
- * relay.acp-24.com is served by nginx on the ACP VPS reverse-proxying to *.workers.dev, so by the
- * time a request reaches the Worker, Cloudflare has set CF-Connecting-IP to the VPS address and
- * appended it to X-Forwarded-For. Neither header identifies the caller any more. nginx therefore
- * forwards the true address as X-Real-Client-IP, a name Cloudflare leaves untouched.
+ * A reverse proxy (nginx, see deploy/nginx/connector.conf) can front the Worker on a custom
+ * domain, in which case by the time a request reaches the Worker Cloudflare has set
+ * CF-Connecting-IP to the proxy's address and appended it to X-Forwarded-For. Neither header
+ * identifies the caller any more. The proxy therefore forwards the true address as
+ * X-Real-Client-IP, a name Cloudflare leaves untouched.
  *
  * The Worker is also reachable directly on its workers.dev URL, where anyone could set that
- * header, so it is believed only alongside the shared X-Edge-Auth secret that only our nginx
+ * header, so it is believed only alongside the shared X-Edge-Auth secret that only the proxy
  * knows. A plain compare is sufficient: the worst case for a forged value is a wrong address in a
  * log line, not an auth bypass.
  */
@@ -77,7 +78,7 @@ export function clientIp(request: Request, edgeSecret?: string): string {
  * to send" the same way the queue consumer does. When the two disagreed, an attachment-only reply
  * whose text was pure BBCode passed the enqueue guard as non-empty and then reached Wasender as an
  * empty send, which it rejects outright - five retries and a dead letter for a message Bitrix then
- * showed as undelivered (confirmed live on b24-ynumvs.bitrix24.com.br, 2026-08-18 21:48 UTC).
+ * showed as undelivered (confirmed live on example.bitrix24.com.br, 2026-08-18 21:48 UTC).
  */
 export function stripBBCode(text: string): string {
   return text

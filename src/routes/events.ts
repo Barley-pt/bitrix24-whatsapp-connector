@@ -21,7 +21,7 @@ export const eventRoutes = new Hono<{ Bindings: Env }>();
 // a plain GET before letting the version save - a POST-only handler fails that check even though
 // it works correctly for the real event delivery (see install.ts for the same fix on /install).
 eventRoutes.get('/events/install', (c) =>
-  c.text('ACPZap - open this app from inside your Bitrix24 portal.', 200),
+  c.text('WhatsApp Connector - open this app from inside your Bitrix24 portal.', 200),
 );
 
 interface EventBody {
@@ -42,7 +42,7 @@ async function readEvent(request: Request): Promise<EventBody | null> {
  * non-2xx only earns a redelivery of an event we have already decided we cannot trust. The cost
  * is that a rejection used to be completely invisible: no log, no row, no metric. A portal whose
  * application_token never arrived discarded every operator reply for five days and produced
- * nothing anywhere to notice (confirmed live 2026-08-10, b24-ynumvs.bitrix24.com.br). Bitrix
+ * nothing anywhere to notice (confirmed live 2026-08-10, example.bitrix24.com.br). Bitrix
  * still gets the same 200; we now get a reason code.
  *
  * Logs which auth keys were present, never their values - the auth block carries live OAuth
@@ -261,7 +261,7 @@ function parseFiles(message: MessageAddEventItem['message']): OutboundFile[] {
  *
  * Only enqueues, one message at a time: the actual Wasender send happens in the queue consumer
  * (index.ts's queue() / src/outbound.ts), so a slow or rate-limited send never holds up Bitrix's
- * event delivery. `chat.id` here is the same external chat id ACPZap set when it called
+ * event delivery. `chat.id` here is the same external chat id the connector set when it called
  * imconnector.send.messages in phase 3 - see OutboundQueueMessage.
  */
 eventRoutes.post('/events/message-add', async (c) => {
@@ -298,7 +298,7 @@ eventRoutes.post('/events/message-add', async (c) => {
     // measures it just before the send: a reply that is pure BBCode ("[br]", an empty [b][/b]) is
     // truthy here but empty by the time it reaches Wasender, which rejects a send carrying neither
     // text nor media. That gap is what made the operator's two-PDF reply on
-    // b24-ynumvs.bitrix24.com.br dead-letter and show as undelivered in Bitrix (2026-08-18 21:48
+    // example.bitrix24.com.br dead-letter and show as undelivered in Bitrix (2026-08-18 21:48
     // UTC): it passed as "has text", then arrived at sendText as "".
     //
     // Reaching this with attachments the operator can see in Bitrix means parseFiles could not read

@@ -12,7 +12,7 @@ const BITRIX = 'https://member-1.bitrix24.com';
 
 const CREATED = {
   id: 106487,
-  name: 'ACP UAE',
+  name: 'Acme Support',
   phone_number: '+971557801481',
   api_key: 'session-api-key-abc',
   webhook_secret: 'webhook-secret-xyz',
@@ -61,7 +61,7 @@ async function seedSession(): Promise<string> {
 
   const res = await apiCall('/api/sessions', 'member-1', {
     method: 'POST',
-    body: JSON.stringify({ name: 'ACP UAE', phoneNumber: '+971557801481' }),
+    body: JSON.stringify({ name: 'Acme Support', phoneNumber: '+971557801481' }),
   });
   return ((await res.json()) as { session: { id: string } }).session.id;
 }
@@ -251,7 +251,7 @@ describe('POST /api/crm/start', () => {
 
   it('starts a fresh chat instead of reopening one stranded on a previous Open Line', async () => {
     // Bitrix pins a chat to the line it was opened on and never migrates it - the id is baked
-    // into the CRM contact's own `imol|acp_whatsapp|<LINE>|...` identifier. So once a number is
+    // into the CRM contact's own `imol|whatsapp_connector|<LINE>|...` identifier. So once a number is
     // re-bound, every chat_map row from the old line points at a conversation the operator can no
     // longer send through: the reply fails inside Bitrix and emits no connector event at all.
     // Confirmed live 2026-08-11 on contact 884, stranded on a line 6 that had been deactivated.

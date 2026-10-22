@@ -27,10 +27,10 @@ GET /api/status             -> 200 {"status":"connected"}
 GET /api/user               -> 200 {"success":true,"data":{"id":"...@s.whatsapp.net","name":"...","lid":"...@lid"}}
 ```
 
-For ACPZap this maps directly onto central provisioning: ACP's **PAT** lives in Worker secrets as
+For the connector this maps directly onto central provisioning: the operator's **PAT** lives in Worker secrets as
 `WASENDER_MASTER_TOKEN` and is used only to create sessions. Each session's own **api_key** is
 returned at creation and stored encrypted per row in `whatsapp_sessions.wasender_api_key`. One
-account can hold many sessions (confirmed by ACP), bounded by the plan's session limit.
+account can hold many sessions (confirmed by the operator), bounded by the plan's session limit.
 
 ## Sessions
 
@@ -67,7 +67,7 @@ fields than documented:
   "phone_number": "+971557801481",
   "account_protection": true,
   "log_messages": true,
-  "webhook_url": "https://relay.acp-24.com/webhook/...",
+  "webhook_url": "https://YOUR_DOMAIN/webhook/...",
   "webhook_enabled": true,
   "ignore_groups": true,
   "ignore_broadcasts": true,
@@ -83,7 +83,7 @@ fields than documented:
 }
 ```
 
-ACPZap treats a missing `status` on creation as `disconnected` rather than trusting the doc's
+The connector treats a missing `status` on creation as `disconnected` rather than trusting the doc's
 `status` field to be there (`src/sessions.ts`, `provisionSession`).
 
 `id` is an **integer**, not a uuid. `api_key` and `webhook_secret` are returned only here and by
@@ -112,12 +112,12 @@ Endpoints we need (`{s}` = session id):
 `messages.received` fires for **incoming only**. `messages.upsert` fires for incoming *and*
 outgoing (`key.fromMe` tells them apart).
 
-**Update 2026-08-06**: ACPZap now subscribes to both. `messages.received` alone missed messages
+**Update 2026-08-06**: the connector now subscribes to both. `messages.received` alone missed messages
 typed on the business phone's WhatsApp app directly (not sent through Bitrix) - those are
 outgoing from Wasender's point of view, so only `messages.upsert` observes them. The trade-off
-this section originally avoided is real: `messages.upsert` also echoes every message ACPZap sends
+this section originally avoided is real: `messages.upsert` also echoes every message the connector sends
 through `/api/send-message`, `fromMe: true` either way, with no id shared between an outbound
-send and its echo to join on (see "Still unverified" below). ACPZap resolves this with a
+send and its echo to join on (see "Still unverified" below). The connector resolves this with a
 pragmatic match against a recent outbound `message_log` row (target jid/phone + normalized text)
 rather than an id-based join - see `schema.sql`'s comment on `message_log`'s `echo_*` columns and
 `src/inbound.ts`'s `detectOutboundEcho`. `src/routes/webhook.ts` drops `fromMe: false` upsert
@@ -230,7 +230,7 @@ subscriptions seen in the dashboard: `messages.received`, `messages-group.receiv
 `messages-newsletter.received`, `messages-personal.received`, `call`, `message.sent`,
 `session.status`, `qrcode.updated`, `passkey.updated`.
 
-Since ACPZap creates sessions through the API, it sets `webhook_url` itself and never depends on
+Since the connector creates sessions through the API, it sets `webhook_url` itself and never depends on
 someone configuring the dashboard by hand.
 
 ## Webhook authentication: a shared secret, not a signature
@@ -248,7 +248,7 @@ declare function verifyWasenderWebhookSignature(
 ): boolean;
 ```
 
-Consequences for ACPZap: the header is a bearer credential, so compare it in constant time, never
+Consequences for the connector: the header is a bearer credential, so compare it in constant time, never
 log it, and treat the body as unauthenticated input. It also means a leaked secret lets anyone
 inject messages into a customer's Open Line, which is an argument for rotating it if a session
 ever misbehaves (`webhook_secret` is rotatable from the dashboard).

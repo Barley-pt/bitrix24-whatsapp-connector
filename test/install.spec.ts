@@ -6,7 +6,7 @@ import { parsePlacementOptions } from '../src/routes/install';
 import type { OutboundQueueMessage, PortalRow } from '../src/types';
 import { applySchema, frameForm, frameRequest, resetDb } from './helpers';
 
-const REST_ORIGIN = 'https://acp.bitrix24.com';
+const REST_ORIGIN = 'https://your-portal.bitrix24.com';
 
 async function call(request: Request): Promise<Response> {
   const ctx = createExecutionContext();
@@ -98,7 +98,7 @@ afterEach(() => {
 
 describe('parsePlacementOptions', () => {
   it('extracts the LINE id Bitrix sends as a string', () => {
-    expect(parsePlacementOptions('{"CONNECTOR":"acp_whatsapp","LINE":"12"}')).toEqual({
+    expect(parsePlacementOptions('{"CONNECTOR":"whatsapp_connector","LINE":"12"}')).toEqual({
       lineId: 12,
     });
   });
@@ -131,8 +131,8 @@ describe('POST /install', () => {
 
     const row = await portal();
     expect(row).not.toBeNull();
-    expect(row?.bitrix_domain).toBe('acp.bitrix24.com');
-    expect(row?.client_endpoint).toBe('https://acp.bitrix24.com/rest/');
+    expect(row?.bitrix_domain).toBe('your-portal.bitrix24.com');
+    expect(row?.client_endpoint).toBe('https://your-portal.bitrix24.com/rest/');
     expect(row?.connector_version).toBe(1);
     expect(row?.status).toBe('active');
 
@@ -156,7 +156,7 @@ describe('POST /install', () => {
 
     expect(res.status).toBe(200);
     const row = await portal();
-    expect(row?.bitrix_domain).toBe('acp.bitrix24.com');
+    expect(row?.bitrix_domain).toBe('your-portal.bitrix24.com');
     expect(await decrypt(row?.access_token as string, env.TOKEN_ENC_KEY)).toBe('access-token-1');
   });
 
@@ -362,7 +362,7 @@ describe('POST /install', () => {
 
   it('rejects a payload without Bitrix auth fields', async () => {
     const body = new FormData();
-    body.set('DOMAIN', 'acp.bitrix24.com');
+    body.set('DOMAIN', 'your-portal.bitrix24.com');
 
     const res = await call(new Request('https://relay.test/install', { method: 'POST', body }));
 
@@ -384,8 +384,8 @@ describe('event handlers', () => {
     refresh_token: 'evt-refresh',
     application_token: 'app-token-1',
     member_id: 'member-1',
-    domain: 'acp.bitrix24.com',
-    client_endpoint: 'https://acp.bitrix24.com/rest/',
+    domain: 'your-portal.bitrix24.com',
+    client_endpoint: 'https://your-portal.bitrix24.com/rest/',
   };
 
   it('ONAPPINSTALL stores the application token the iframe path cannot supply', async () => {
@@ -406,7 +406,7 @@ describe('event handlers', () => {
     /**
      * The deadlock this breaks: a portal with no application_token cannot authenticate any event,
      * and the only events that could supply one are themselves rejected. Confirmed live
-     * 2026-08-10 on b24-ynumvs.bitrix24.com.br - five days of operator replies discarded while
+     * 2026-08-10 on example.bitrix24.com.br - five days of operator replies discarded while
      * placements, the connector and inbound all looked healthy.
      */
     async function iframeInstallWithoutToken() {
@@ -638,7 +638,7 @@ describe('event handlers', () => {
         body: eventForm('ONAPPUNINSTALL', {
           member_id: 'member-1',
           application_token: 'wrong-token',
-          domain: 'acp.bitrix24.com',
+          domain: 'your-portal.bitrix24.com',
           access_token: 'x',
         }),
       }),
@@ -651,7 +651,7 @@ describe('event handlers', () => {
         body: eventForm('ONAPPUNINSTALL', {
           member_id: 'member-1',
           application_token: 'app-token-1',
-          domain: 'acp.bitrix24.com',
+          domain: 'your-portal.bitrix24.com',
           access_token: 'x',
         }),
       }),
@@ -768,7 +768,7 @@ describe('event handlers', () => {
       const res = await call(
         new Request('https://relay.test/events/message-add', {
           method: 'POST',
-          // The live regression (b24-ynumvs.bitrix24.com.br, 2026-08-18 21:48 UTC): two PDFs whose
+          // The live regression (example.bitrix24.com.br, 2026-08-18 21:48 UTC): two PDFs whose
           // links parseFiles cannot read, and a text that is truthy here but strips to "". It used
           // to pass this guard as "has text" and then reach Wasender as an empty send, which is
           // rejected - five retries, a dead letter, and "message not delivered" in Bitrix.

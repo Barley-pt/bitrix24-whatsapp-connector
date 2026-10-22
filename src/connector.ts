@@ -43,7 +43,7 @@ const CRM_TAB_PLACEMENTS = [
  * db.ts's markUninstalled clears the column to avoid exactly this, but that only helps when
  * ONAPPUNINSTALL was actually received and authenticated; a portal whose application_token never
  * arrived rejects that event too, so the stale version survives the whole uninstall/reinstall
- * cycle. Confirmed live twice: 2026-08-05, and again 2026-08-11 on b24-ynumvs.bitrix24.com.br,
+ * cycle. Confirmed live twice: 2026-08-05, and again 2026-08-11 on example.bitrix24.com.br,
  * where a reinstall left Contact Center with no connector at all. An install is unambiguous
  * evidence that Bitrix's side is empty, so it re-registers unconditionally rather than trusting
  * bookkeeping that a failed event could have skipped.
@@ -325,7 +325,7 @@ const EVENT_HANDLERS: Array<{ event: string; path: string }> = [
   // validated against (events.ts's authenticate). Bound here explicitly rather than relying
   // solely on the Market version card's "Installation event handler URL" field: that field is
   // typed by hand outside this repo, and when it is wrong the failure is total and silent -
-  // confirmed live 2026-08-10 on b24-ynumvs.bitrix24.com.br, where every placement, the connector
+  // confirmed live 2026-08-10 on example.bitrix24.com.br, where every placement, the connector
   // and inbound all worked while application_token stayed NULL and five days of operator replies
   // were discarded. installFinish() is called only after this binding runs (routes/install.ts),
   // and ONAPPINSTALL fires immediately after that, so the handler is always in place in time.

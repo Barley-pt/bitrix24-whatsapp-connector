@@ -9,7 +9,7 @@ import {
   t,
 } from '../ui/src/i18n';
 
-const LOCALE_STORAGE_KEY = 'acpzap.locale';
+const LOCALE_STORAGE_KEY = 'bwac.locale';
 
 function installMemoryStorage() {
   const store = new Map<string, string>();
@@ -92,7 +92,7 @@ describe('i18n', () => {
     }
   });
 
-  it('persists the chosen locale under acpzap.locale and honors it after setLocale', () => {
+  it('persists the chosen locale under bwac.locale and honors it after setLocale', () => {
     setLocale('pt-BR');
     expect(globalThis.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('pt-BR');
     expect(getLocale()).toBe('pt-BR');

@@ -31,7 +31,7 @@ export async function renderApp(
   // The placeholder sits in the HTML as a quoted string so the bundle stays valid JS before
   // substitution; swapping it including its quotes turns it into an object literal.
   const html = (await asset.text()).replace(
-    '"__ACPZAP_BOOTSTRAP__"',
+    '"__CONNECTOR_BOOTSTRAP__"',
     // The bootstrap object is embedded in a <script> block, so close-tag sequences in the data
     // would break out of it. Nothing here is user-controlled today, but keep it inert.
     bootstrap.replace(/</g, '\\u003c'),

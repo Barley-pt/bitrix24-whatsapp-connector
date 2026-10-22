@@ -213,8 +213,8 @@ interface SendMessagesResult {
  * a chat opened from a CRM record that obviously must not spawn a duplicate lead. Per the method's
  * own documentation the flag "disables the CRM tracker for the message" - the whole tracker, not
  * just lead creation. The tracker is what attaches the deal, saves the contact's details, and
- * performs the responsible-person routing; measured against ChatApp on acp.bitrix24.com
- * 2026-08-11, it is what emits every system line in a healthy Open Line chat ("Deal attached to
+ * performs the responsible-person routing; measured against another WhatsApp connector running
+ * on the same portal, it is what emits every system line in a healthy Open Line chat ("Deal attached to
  * conversation", "Contact information saved to the contact", "Enquiry redirected to <operator>
  * (CRM's responsible person)"). Suppressing it is what left click-to-chat chats looking like empty
  * stubs.
@@ -226,7 +226,7 @@ interface SendMessagesResult {
  * against the pre-existing deal 7608 rather than creating a second one.
  *
  * That does put weight on the phone matching. On a line whose CRM_CREATE is not 'none' (line 4 on
- * b24-ynumvs is 'deal', where an unmatched conversation really does mint a deal - that is where
+ * example is 'deal', where an unmatched conversation really does mint a deal - that is where
  * "Guest - Whatsapp" #976 came from) a formatting mismatch between `phone` here and the number on
  * the CRM record would show up as a duplicate deal per click. Worth watching on the first live
  * run against such a line.

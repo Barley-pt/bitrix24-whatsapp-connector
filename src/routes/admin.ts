@@ -5,19 +5,19 @@ import type { Env, PortalRow } from '../types';
 import { timingSafeEqual } from '../util';
 
 /**
- * ACP-only license administration. There is no self-serve purchase flow yet (phase 5 scope), so
- * ACP binds a Maestro license key to a customer's portal here after issuing/selling it - the same
+ * Operator-only license administration. There is no self-serve purchase flow yet, so the vendor
+ * binds a Maestro license key to a customer's portal here after issuing/selling it - the same
  * shape as the Companion App's /admin Licenses tab, cut down to what this app needs. Full
  * cross-tenant admin (phase 7) is separate, larger scope.
  *
- * Auth: shared secret via X-ACP-Admin-Key, like the Companion App's ACP_ADMIN_SECRET. Not a
+ * Auth: shared secret via X-Admin-Key, like the Companion App's ADMIN_SECRET. Not a
  * Bitrix session - this never runs inside a portal's iframe.
  */
 export const adminRoutes = new Hono<{ Bindings: Env }>();
 
 adminRoutes.use('/admin/*', async (c, next) => {
-  const provided = c.req.header('X-ACP-Admin-Key');
-  if (!provided || !c.env.ACP_ADMIN_SECRET || !(await timingSafeEqual(provided, c.env.ACP_ADMIN_SECRET))) {
+  const provided = c.req.header('X-Admin-Key');
+  if (!provided || !c.env.ADMIN_SECRET || !(await timingSafeEqual(provided, c.env.ADMIN_SECRET))) {
     return c.json({ error: 'UNAUTHORIZED' }, 401);
   }
   await next();

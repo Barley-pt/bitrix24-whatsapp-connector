@@ -21,7 +21,7 @@ const BITRIX = 'https://member-1.bitrix24.com';
 
 const CREATED = {
   id: 106487,
-  name: 'ACP UAE',
+  name: 'Acme Support',
   phone_number: '+971557801481',
   api_key: 'session-api-key-abc',
   webhook_secret: 'webhook-secret-xyz',
@@ -70,7 +70,7 @@ async function seedSession(): Promise<string> {
 
   const res = await apiCall('/api/sessions', 'member-1', {
     method: 'POST',
-    body: JSON.stringify({ name: 'ACP UAE', phoneNumber: '+971557801481' }),
+    body: JSON.stringify({ name: 'Acme Support', phoneNumber: '+971557801481' }),
   });
   return ((await res.json()) as { session: { id: string } }).session.id;
 }
@@ -245,7 +245,7 @@ describe('processInboundMessage: session not yet bound to a Line', () => {
     const sessionId = await seedSession();
     const sendSpy = vi.spyOn(env.INBOUND_QUEUE, 'send').mockResolvedValue(FAKE_QUEUE_SEND_RESPONSE);
 
-    const batch = batchOf('acpzap-inbound', [inboundMessage(sessionId)]);
+    const batch = batchOf('bwac-inbound', [inboundMessage(sessionId)]);
     const result = await runQueue(batch);
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
@@ -263,7 +263,7 @@ describe('processInboundMessage: session not yet bound to a Line', () => {
     const sendSpy = vi.spyOn(env.INBOUND_QUEUE, 'send').mockResolvedValue(FAKE_QUEUE_SEND_RESPONSE);
 
     const stale = inboundMessage(sessionId, { firstAttemptAt: Date.now() - 25 * 60 * 60 * 1000 });
-    const result = await runQueue(batchOf('acpzap-inbound', [stale]));
+    const result = await runQueue(batchOf('bwac-inbound', [stale]));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
     expect(sendSpy).not.toHaveBeenCalled();
@@ -292,10 +292,10 @@ describe('processInboundMessage: bound session, happy path', () => {
       })
       .reply(200, sendMessagesOk('1767'));
 
-    const result = await runQueue(batchOf('acpzap-inbound', [inboundMessage(sessionId)]));
+    const result = await runQueue(batchOf('bwac-inbound', [inboundMessage(sessionId)]));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
-    expect(sentBody.CONNECTOR).toBe('acp_whatsapp');
+    expect(sentBody.CONNECTOR).toBe('whatsapp_connector');
     expect(sentBody.LINE).toBe(12);
     const [message] = sentBody.MESSAGES as [Record<string, unknown>];
     expect(message.user).toStrictEqual({
@@ -342,7 +342,7 @@ describe('processInboundMessage: bound session, happy path', () => {
       })
       .reply(200, sendMessagesOk('1767'));
 
-    await runQueue(batchOf('acpzap-inbound', [inboundMessage(sessionId)]));
+    await runQueue(batchOf('bwac-inbound', [inboundMessage(sessionId)]));
 
     const [message] = sentBody.MESSAGES as [Record<string, unknown>];
     expect(message.user).toStrictEqual({ id: '+971500000000', phone: '+971500000000', name: 'Jane Doe' });
@@ -370,7 +370,7 @@ describe('processInboundMessage: bound session, happy path', () => {
       })
       .reply(200, sendMessagesOk('1767'));
 
-    await runQueue(batchOf('acpzap-inbound', [inboundMessage(sessionId)]));
+    await runQueue(batchOf('bwac-inbound', [inboundMessage(sessionId)]));
 
     const [message] = sentBody.MESSAGES as [Record<string, unknown>];
     expect(message.user).toStrictEqual({ id: '+971500000000', phone: '+971500000000', name: 'Jane Doe' });
@@ -378,7 +378,7 @@ describe('processInboundMessage: bound session, happy path', () => {
 
   // Falling back to the phone number rather than to nothing: with no user.name Bitrix invents
   // "Guest", and the CRM tracker propagates it into the contact and the deal it creates. Confirmed
-  // live on b24-ynumvs 2026-08-12 - contact 902 "Guest", deal 976 "Guest - Whatsapp".
+  // live on example 2026-08-12 - contact 902 "Guest", deal 976 "Guest - Whatsapp".
   it('falls back to the phone number as user.name when the Wasender contact lookup fails', async () => {
     const sessionId = await seedSession();
     await bindToLine(sessionId, 12);
@@ -401,7 +401,7 @@ describe('processInboundMessage: bound session, happy path', () => {
       })
       .reply(200, sendMessagesOk('1767'));
 
-    await runQueue(batchOf('acpzap-inbound', [inboundMessage(sessionId)]));
+    await runQueue(batchOf('bwac-inbound', [inboundMessage(sessionId)]));
 
     const [message] = sentBody.MESSAGES as [Record<string, unknown>];
     expect(message.user).toStrictEqual({
@@ -454,7 +454,7 @@ describe('processInboundMessage: bound session, happy path', () => {
       },
     });
 
-    await runQueue(batchOf('acpzap-inbound', [media]));
+    await runQueue(batchOf('bwac-inbound', [media]));
 
     expect((decryptBody as { data?: { messages?: { key?: { id?: string } } } }).data?.messages?.key?.id).toBe(
       'wamid-2',
@@ -491,7 +491,7 @@ describe('processInboundMessage: bound session, happy path', () => {
     // ephemeralMessage). A flat `imageMessage in message` check finds nothing here, which
     // delivered the message to Bitrix with no attachment at all.
     await runQueue(
-      batchOf('acpzap-inbound', [
+      batchOf('bwac-inbound', [
         inboundMessage(sessionId, {
           message: {
             key: { id: 'wamid-3', fromMe: false, remoteJid: '123@lid', cleanedSenderPn: '+971500000000' },
@@ -541,7 +541,7 @@ describe('processInboundMessage: bound session, happy path', () => {
       .reply(200, sendMessagesOk());
 
     await runQueue(
-      batchOf('acpzap-inbound', [
+      batchOf('bwac-inbound', [
         inboundMessage(sessionId, {
           message: {
             key: { id: 'wamid-4', fromMe: false, remoteJid: '123@lid', cleanedSenderPn: '+971500000000' },
@@ -566,8 +566,8 @@ describe('processInboundMessage: bound session, happy path', () => {
       .intercept({ path: '/rest/imconnector.send.messages', method: 'POST' })
       .reply(200, sendMessagesOk());
 
-    await runQueue(batchOf('acpzap-inbound', [inboundMessage(sessionId)]));
-    const result = await runQueue(batchOf('acpzap-inbound', [inboundMessage(sessionId)]));
+    await runQueue(batchOf('bwac-inbound', [inboundMessage(sessionId)]));
+    const result = await runQueue(batchOf('bwac-inbound', [inboundMessage(sessionId)]));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
     const rows = await env.DB.prepare(
@@ -587,7 +587,7 @@ describe('processInboundMessage: bound session, happy path', () => {
       .intercept({ path: '/rest/imconnector.send.messages', method: 'POST' })
       .reply(200, { error: 'NOT_ACTIVE_LINE', error_description: 'inactive' });
 
-    const result = await runQueue(batchOf('acpzap-inbound', [inboundMessage(sessionId)]));
+    const result = await runQueue(batchOf('bwac-inbound', [inboundMessage(sessionId)]));
 
     expect(result.retryMessages).toStrictEqual([{ msgId: 'msg-0' }]);
     expect(result.explicitAcks).toStrictEqual([]);
@@ -620,7 +620,7 @@ describe('processInboundMessage: group message routing', () => {
       })
       .reply(200, sendMessagesOk('1768'));
 
-    const result = await runQueue(batchOf('acpzap-inbound', [groupInboundMessage(sessionId)]));
+    const result = await runQueue(batchOf('bwac-inbound', [groupInboundMessage(sessionId)]));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
     const [message] = sentBody.MESSAGES as [Record<string, unknown>];
@@ -663,7 +663,7 @@ describe('processInboundMessage: group message routing', () => {
       })
       .reply(200, sendMessagesOk('1768'));
 
-    await runQueue(batchOf('acpzap-inbound', [groupInboundMessage(sessionId)]));
+    await runQueue(batchOf('bwac-inbound', [groupInboundMessage(sessionId)]));
 
     const [message] = sentBody.MESSAGES as [Record<string, unknown>];
     // A group's waPhone is its JID, not a number worth showing anyone - hence a generic label
@@ -705,8 +705,8 @@ const chatMapRowsForPhone = (sessionId: string) =>
 
 // WhatsApp addresses one contact under two jids over time - the phone jid and the privacy LID - and
 // can switch mid-conversation. Passing the raw remoteJid as chat.id made Bitrix open a second chat
-// on the switch (acp line 2: chats 5398 + 5400 for 5511964253002; customer line 3: 160777 + 160779
-// for 971569863429, three minutes apart) and the operator's open chat went silent.
+// on the switch (line 2: chats 5398 + 5400 for 5511999999999; line 3: 160777 + 160779
+// for 971500000000, three minutes apart) and the operator's open chat went silent.
 describe('processInboundMessage: one Bitrix chat per contact across jid changes', () => {
   it('posts a phone-jid message and a later LID-jid message for the same phone under the SAME chat.id', async () => {
     const sessionId = await seedSession();
@@ -714,7 +714,7 @@ describe('processInboundMessage: one Bitrix chat per contact across jid changes'
     const sent = captureSendMessages(2);
 
     await runQueue(
-      batchOf('acpzap-inbound', [
+      batchOf('bwac-inbound', [
         inboundMessage(sessionId, {
           message: {
             key: {
@@ -729,7 +729,7 @@ describe('processInboundMessage: one Bitrix chat per contact across jid changes'
       ]),
     );
     await runQueue(
-      batchOf('acpzap-inbound', [
+      batchOf('bwac-inbound', [
         inboundMessage(sessionId, {
           message: {
             key: { id: 'wamid-lid', fromMe: false, remoteJid: '123@lid', cleanedSenderPn: '971500000000' },
@@ -758,7 +758,7 @@ describe('processInboundMessage: one Bitrix chat per contact across jid changes'
     const sent = captureSendMessages(1);
 
     await runQueue(
-      batchOf('acpzap-inbound', [
+      batchOf('bwac-inbound', [
         inboundMessage(sessionId, {
           message: {
             key: {
@@ -790,7 +790,7 @@ describe('processInboundMessage: one Bitrix chat per contact across jid changes'
       .reply(404, { success: false });
     const sent = captureSendMessages(1);
 
-    await runQueue(batchOf('acpzap-inbound', [groupInboundMessage(sessionId)]));
+    await runQueue(batchOf('bwac-inbound', [groupInboundMessage(sessionId)]));
 
     expect(sent[0]!.chat).toStrictEqual({ id: '123456789-987654321@g.us' });
   });
@@ -815,7 +815,7 @@ describe('processInboundMessage: app-sent messages across jid changes', () => {
     // We send by phone, so Wasender echoes it back under the phone jid - no cleanedSenderPn.
     // No Bitrix interceptor: posting it would hit disableNetConnect and fail the test.
     const result = await runQueue(
-      batchOf('acpzap-inbound', [
+      batchOf('bwac-inbound', [
         appSentMessage(sessionId, {
           message: {
             key: { id: 'wamid-echo', fromMe: true, remoteJid: '971500000000@s.whatsapp.net' },
@@ -847,7 +847,7 @@ describe('processInboundMessage: app-sent messages across jid changes', () => {
     const sent = captureSendMessages(1);
 
     await runQueue(
-      batchOf('acpzap-inbound', [
+      batchOf('bwac-inbound', [
         appSentMessage(sessionId, {
           message: {
             key: { id: 'wamid-app-2', fromMe: true, remoteJid: '971500000000@s.whatsapp.net' },
@@ -897,16 +897,16 @@ describe('processInboundMessage: chat naming and avatar', () => {
     // that warning is what proves it never happened.
     const warn = vi.spyOn(console, 'warn');
 
-    await runQueue(batchOf('acpzap-inbound', [inboundMessage(sessionId)]));
+    await runQueue(batchOf('bwac-inbound', [inboundMessage(sessionId)]));
     // Second message: name and picture come from chat_map (no second Wasender lookup is mocked),
     // and the unchanged name must not be re-sent to Bitrix.
     const second = inboundMessage(sessionId);
     second.message.key.id = 'wamid-2';
-    await runQueue(batchOf('acpzap-inbound', [second]));
+    await runQueue(batchOf('bwac-inbound', [second]));
 
     expect(renames).toStrictEqual([
       {
-        CONNECTOR: 'acp_whatsapp',
+        CONNECTOR: 'whatsapp_connector',
         LINE: 12,
         CHAT_ID: '971500000000@s.whatsapp.net',
         NAME: 'Jane Doe',
@@ -945,14 +945,14 @@ describe('processInboundMessage: chat naming and avatar', () => {
       });
     captureSendMessages(1);
 
-    await runQueue(batchOf('acpzap-inbound', [inboundMessage(sessionId)]));
+    await runQueue(batchOf('bwac-inbound', [inboundMessage(sessionId)]));
     const second = inboundMessage(sessionId);
     second.message.key.id = 'wamid-2';
-    await runQueue(batchOf('acpzap-inbound', [second]));
+    await runQueue(batchOf('bwac-inbound', [second]));
 
     expect(renames).toStrictEqual([
       {
-        CONNECTOR: 'acp_whatsapp',
+        CONNECTOR: 'whatsapp_connector',
         LINE: 12,
         CHAT_ID: '123@lid',
         NAME: 'Jane Doe',
@@ -973,7 +973,7 @@ describe('processInboundMessage: chat naming and avatar', () => {
     // No chat.name.set interceptor: a call would hit disableNetConnect. The spy proves none was made.
     const warn = vi.spyOn(console, 'warn');
 
-    await runQueue(batchOf('acpzap-inbound', [inboundMessage(sessionId)]));
+    await runQueue(batchOf('bwac-inbound', [inboundMessage(sessionId)]));
 
     expect(sent[0]!.user).toStrictEqual({ id: '+971500000000', phone: '+971500000000', name: '+971500000000' });
     expect(warn.mock.calls.flat().join(' ')).not.toContain('chat.name.set');
@@ -992,7 +992,7 @@ describe('processInboundMessage: chat naming and avatar', () => {
       .intercept({ path: '/rest/imconnector.chat.name.set', method: 'POST' })
       .reply(400, { error: 'CHAT_RENAMING_FAILED', error_description: 'Chat not found' });
 
-    const result = await runQueue(batchOf('acpzap-inbound', [inboundMessage(sessionId)]));
+    const result = await runQueue(batchOf('bwac-inbound', [inboundMessage(sessionId)]));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
     expect(result.retryMessages).toStrictEqual([]);
@@ -1001,12 +1001,12 @@ describe('processInboundMessage: chat naming and avatar', () => {
   });
 });
 
-describe('acpzap-inbound-dlq consumer', () => {
+describe('bwac-inbound-dlq consumer', () => {
   it('marks message_log failed once Cloudflare gives up retrying', async () => {
     const sessionId = await seedSession();
     await bindToLine(sessionId, 12);
 
-    const result = await runQueue(batchOf('acpzap-inbound-dlq', [inboundMessage(sessionId)]));
+    const result = await runQueue(batchOf('bwac-inbound-dlq', [inboundMessage(sessionId)]));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
     const log = await messageLogRow(sessionId, 'wamid-1');
@@ -1029,7 +1029,7 @@ describe('processInboundMessage: app-sent (messages.upsert, fromMe: true)', () =
 
     // No Bitrix interceptor is registered - if the echo weren't recognized, the resulting
     // imconnector.send.messages call would hit disableNetConnect() and fail the test.
-    const result = await runQueue(batchOf('acpzap-inbound', [appSentMessage(sessionId)]));
+    const result = await runQueue(batchOf('bwac-inbound', [appSentMessage(sessionId)]));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
 
@@ -1056,7 +1056,7 @@ describe('processInboundMessage: app-sent (messages.upsert, fromMe: true)', () =
     // Again no Bitrix interceptor: treating this as a genuine app-sent message would post the
     // operator's own attachment straight back into the Open Line as [SENT FROM MOBILE].
     const result = await runQueue(
-      batchOf('acpzap-inbound', [
+      batchOf('bwac-inbound', [
         appSentMessage(sessionId, {
           message: {
             key: { id: 'wamid-app-2', fromMe: true, remoteJid: '123@lid' },
@@ -1093,7 +1093,7 @@ describe('processInboundMessage: app-sent (messages.upsert, fromMe: true)', () =
       .reply(200, sendMessagesOk());
 
     await runQueue(
-      batchOf('acpzap-inbound', [
+      batchOf('bwac-inbound', [
         appSentMessage(sessionId, {
           message: {
             key: { id: 'wamid-app-3', fromMe: true, remoteJid: '123@lid' },
@@ -1116,8 +1116,8 @@ describe('processInboundMessage: app-sent (messages.upsert, fromMe: true)', () =
     await bindToLine(sessionId, 12);
     await seedOutboundSent(sessionId, { text: 'be there in 10' });
 
-    await runQueue(batchOf('acpzap-inbound', [appSentMessage(sessionId)]));
-    const result = await runQueue(batchOf('acpzap-inbound', [appSentMessage(sessionId)]));
+    await runQueue(batchOf('bwac-inbound', [appSentMessage(sessionId)]));
+    const result = await runQueue(batchOf('bwac-inbound', [appSentMessage(sessionId)]));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
     const rows = await env.DB.prepare(
@@ -1146,7 +1146,7 @@ describe('processInboundMessage: app-sent (messages.upsert, fromMe: true)', () =
       })
       .reply(200, sendMessagesOk());
 
-    const result = await runQueue(batchOf('acpzap-inbound', [appSentMessage(sessionId)]));
+    const result = await runQueue(batchOf('bwac-inbound', [appSentMessage(sessionId)]));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
     const [message] = sentBody.MESSAGES as [Record<string, unknown>];
@@ -1187,7 +1187,7 @@ describe('processInboundMessage: app-sent (messages.upsert, fromMe: true)', () =
       })
       .reply(200, sendMessagesOk());
 
-    await runQueue(batchOf('acpzap-inbound', [appSentMessage(sessionId)]));
+    await runQueue(batchOf('bwac-inbound', [appSentMessage(sessionId)]));
 
     const [message] = sentBody.MESSAGES as [Record<string, unknown>];
     expect(message.user).toStrictEqual({ id: '+971500000000', phone: '+971500000000', name: 'Jane Doe' });
@@ -1204,8 +1204,8 @@ describe('processInboundMessage: app-sent (messages.upsert, fromMe: true)', () =
       .intercept({ path: '/rest/imconnector.send.messages', method: 'POST' })
       .reply(200, sendMessagesOk());
 
-    await runQueue(batchOf('acpzap-inbound', [appSentMessage(sessionId)]));
-    const result = await runQueue(batchOf('acpzap-inbound', [appSentMessage(sessionId)]));
+    await runQueue(batchOf('bwac-inbound', [appSentMessage(sessionId)]));
+    const result = await runQueue(batchOf('bwac-inbound', [appSentMessage(sessionId)]));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
     const rows = await env.DB.prepare(
@@ -1249,7 +1249,7 @@ describe('processInboundMessage: app-sent (messages.upsert, fromMe: true)', () =
       },
     });
 
-    await runQueue(batchOf('acpzap-inbound', [media]));
+    await runQueue(batchOf('bwac-inbound', [media]));
 
     const [message] = sentBody.MESSAGES as [
       { message: { text: string; files: Array<{ url: string; name: string }> } },
@@ -1266,7 +1266,7 @@ describe('processInboundMessage: app-sent (messages.upsert, fromMe: true)', () =
     await bindToLine(sessionId, 12);
     // No seedChatMap call and no prior outbound send - nothing to resolve the contact phone from.
 
-    const result = await runQueue(batchOf('acpzap-inbound', [appSentMessage(sessionId)]));
+    const result = await runQueue(batchOf('bwac-inbound', [appSentMessage(sessionId)]));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
     const log = await env.DB.prepare(
@@ -1326,7 +1326,7 @@ describe('processInboundMessage: reply context (contextInfo)', () => {
     const captured = captureSend();
 
     await runQueue(
-      batchOf('acpzap-inbound', [
+      batchOf('bwac-inbound', [
         contextMessage(sessionId, {
           extendedTextMessage: {
             text: 'hello there',
@@ -1334,7 +1334,7 @@ describe('processInboundMessage: reply context (contextInfo)', () => {
               stanzaId: 'SNE5U4M5OSPWHXHN1WBGV',
               participant: '971500000000@s.whatsapp.net',
               externalAdReply: {
-                title: 'Elyzee Hospital - LASIK package',
+                title: 'Acme Hospital - LASIK package',
                 body: 'AED 5,900 all-in. Book today.',
                 mediaType: 2,
                 thumbnailUrl: 'https://scontent.xx.fbcdn.net/v/ad-thumb.jpg?_nc_cat=1',
@@ -1347,7 +1347,7 @@ describe('processInboundMessage: reply context (contextInfo)', () => {
 
     const message = sentMessage(captured);
     expect(message.text).toBe(
-      'In reply to ad: Elyzee Hospital - LASIK package\nAED 5,900 all-in. Book today.\nhello there',
+      'In reply to ad: Acme Hospital - LASIK package\nAED 5,900 all-in. Book today.\nhello there',
     );
     expect(message.files).toStrictEqual([
       { url: 'https://scontent.xx.fbcdn.net/v/ad-thumb.jpg?_nc_cat=1', name: 'ad-thumbnail.jpg' },
@@ -1361,7 +1361,7 @@ describe('processInboundMessage: reply context (contextInfo)', () => {
     const captured = captureSend();
 
     await runQueue(
-      batchOf('acpzap-inbound', [
+      batchOf('bwac-inbound', [
         contextMessage(sessionId, {
           extendedTextMessage: {
             text: 'hello there',
@@ -1388,7 +1388,7 @@ describe('processInboundMessage: reply context (contextInfo)', () => {
     const captured = captureSend();
 
     await runQueue(
-      batchOf('acpzap-inbound', [
+      batchOf('bwac-inbound', [
         contextMessage(sessionId, {
           ephemeralMessage: {
             message: {
@@ -1411,7 +1411,7 @@ describe('processInboundMessage: reply context (contextInfo)', () => {
     const captured = captureSend();
 
     await runQueue(
-      batchOf('acpzap-inbound', [
+      batchOf('bwac-inbound', [
         contextMessage(sessionId, {
           extendedTextMessage: {
             text: 'hello there',
@@ -1432,7 +1432,7 @@ describe('processInboundMessage: reply context (contextInfo)', () => {
     const captured = captureSend();
 
     await runQueue(
-      batchOf('acpzap-inbound', [
+      batchOf('bwac-inbound', [
         contextMessage(sessionId, { extendedTextMessage: { text: 'hello there' } }),
       ]),
     );
@@ -1577,7 +1577,7 @@ describe('processInboundMessage: license enforcement (LICENSE_ENFORCE=true)', ()
       .intercept({ path: '/rest/imconnector.send.messages', method: 'POST' })
       .reply(200, sendMessagesOk('1767'));
 
-    const result = await withEnforcement(() => runQueue(batchOf('acpzap-inbound', [inboundMessage(sessionId)])));
+    const result = await withEnforcement(() => runQueue(batchOf('bwac-inbound', [inboundMessage(sessionId)])));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
     expect((await messageLogRow(sessionId, 'wamid-1'))?.status).toBe('sent');
@@ -1604,7 +1604,7 @@ describe('processInboundMessage: license enforcement (LICENSE_ENFORCE=true)', ()
       .run();
 
     // No BITRIX interceptor registered - a call to imconnector.send.messages would fail the test.
-    const result = await withEnforcement(() => runQueue(batchOf('acpzap-inbound', [inboundMessage(sessionId)])));
+    const result = await withEnforcement(() => runQueue(batchOf('bwac-inbound', [inboundMessage(sessionId)])));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
     const log = await messageLogRow(sessionId, 'wamid-1');
@@ -1632,7 +1632,7 @@ describe('processInboundMessage: license enforcement (LICENSE_ENFORCE=true)', ()
       .intercept({ path: '/rest/imconnector.send.messages', method: 'POST' })
       .reply(200, sendMessagesOk('1767'));
 
-    const result = await withEnforcement(() => runQueue(batchOf('acpzap-inbound', [inboundMessage(sessionId)])));
+    const result = await withEnforcement(() => runQueue(batchOf('bwac-inbound', [inboundMessage(sessionId)])));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
     expect((await messageLogRow(sessionId, 'wamid-1'))?.status).toBe('sent');
@@ -1643,7 +1643,7 @@ describe('processInboundMessage: license enforcement (LICENSE_ENFORCE=true)', ()
     await bindToLine(sessionId, 12);
     // No seedLicense call - the portal has no license row at all.
 
-    const result = await withEnforcement(() => runQueue(batchOf('acpzap-inbound', [inboundMessage(sessionId)])));
+    const result = await withEnforcement(() => runQueue(batchOf('bwac-inbound', [inboundMessage(sessionId)])));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
     const log = await messageLogRow(sessionId, 'wamid-1');

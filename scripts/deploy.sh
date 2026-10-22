@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Iterative deploy for ACPZap. Run after every merge to main.
+# Iterative deploy for Bitrix24 WhatsApp Connector. Run after every merge to main.
 #
-#   cd /opt/relay && ./scripts/deploy.sh
+#   cd /opt/connector && ./scripts/deploy.sh
 #
 # Flags:
 #   --migrate      also apply schema.sql to the remote D1 (safe: every statement is IF NOT EXISTS)
@@ -18,7 +18,7 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_DIR"
 
 BRANCH="main"
-HEALTH_URL="https://relay.acp-24.com/health"
+HEALTH_URL="https://YOUR_DOMAIN/health"
 
 MIGRATE=0
 SKIP_PULL=0
@@ -88,7 +88,7 @@ npm run ui:build
 
 if [ "$MIGRATE" -eq 1 ]; then
   info "Applying schema.sql to the remote database"
-  npx wrangler d1 execute acpzap --remote --file=./schema.sql --yes
+  npx wrangler d1 execute bitrix_whatsapp --remote --file=./schema.sql --yes
 fi
 
 # --- 4. deploy ------------------------------------------------------------------------------

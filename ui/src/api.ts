@@ -56,7 +56,7 @@ export interface Bootstrap {
 
 /** Injected by the Worker into index.html. Absent when the bundle is opened directly. */
 export function bootstrap(): Bootstrap | null {
-  const raw = (window as unknown as { __ACPZAP__?: unknown }).__ACPZAP__;
+  const raw = (window as unknown as { __CONNECTOR_BOOTSTRAP__?: unknown }).__CONNECTOR_BOOTSTRAP__;
   return raw && typeof raw === 'object' ? (raw as Bootstrap) : null;
 }
 

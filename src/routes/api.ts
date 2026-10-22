@@ -127,9 +127,9 @@ apiRoutes.get('/api/state', async (c) => {
 
 /**
  * Customer-facing activation: the portal's own admin binds a purchased licence key from inside
- * the app, no X-ACP-Admin-Key involved. The portal is already resolved from the signed Bitrix
+ * the app, no X-Admin-Key involved. The portal is already resolved from the signed Bitrix
  * session by the /api/* middleware above, so this can only ever bind a key to the caller's own
- * portal - mirrors the ACP-only POST /admin/portals/:domain/license (routes/admin.ts) but scoped
+ * portal - mirrors the operator-only POST /admin/portals/:domain/license (routes/admin.ts) but scoped
  * to "self" instead of taking a domain param.
  */
 apiRoutes.post('/api/license/activate', async (c) => {

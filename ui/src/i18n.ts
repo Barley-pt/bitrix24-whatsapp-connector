@@ -8,7 +8,7 @@ export type Locale = 'en' | 'pt-BR';
 export const DEFAULT_LOCALE: Locale = 'en';
 export const SUPPORTED_LOCALES: readonly Locale[] = ['en', 'pt-BR'];
 
-const STORAGE_KEY = 'acpzap.locale';
+const STORAGE_KEY = 'bwac.locale';
 
 const catalogs: Record<Locale, Record<string, string>> = {
   en,

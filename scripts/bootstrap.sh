@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# First-time setup for ACPZap. Run once per environment, then use scripts/deploy.sh.
+# First-time setup for Bitrix24 WhatsApp Connector. Run once per environment, then use scripts/deploy.sh.
 #
-#   cd /opt/relay && ./scripts/bootstrap.sh
+#   cd /opt/connector && ./scripts/bootstrap.sh
 #
 # Idempotent: re-running it re-uploads secrets and redeploys, which is harmless. It stops with
 # instructions if a one-time manual step is still outstanding.
@@ -12,9 +12,9 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_DIR"
 
-WORKER_NAME="acpzap"
-D1_NAME="acpzap"
-HEALTH_URL="https://relay.acp-24.com/health"
+WORKER_NAME="bitrix-whatsapp-connector"
+D1_NAME="bitrix_whatsapp"
+HEALTH_URL="https://YOUR_DOMAIN/health"
 
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 info() { printf '  %s\n' "$*"; }
@@ -81,7 +81,7 @@ put_secret APP_SECRET "${APP_SECRET:-}"
 put_secret TOKEN_ENC_KEY "${TOKEN_ENC_KEY:-}"
 put_secret EDGE_SECRET "${EDGE_SECRET:-}"
 put_secret WASENDER_MASTER_TOKEN "${WASENDER_MASTER_TOKEN:-}"
-put_secret ACP_ADMIN_SECRET "${ACP_ADMIN_SECRET:-}"
+put_secret ADMIN_SECRET "${ADMIN_SECRET:-}"
 
 if grep -q 'REPLACE_WITH_BITRIX_CLIENT_ID' wrangler.jsonc; then
   warn "BITRIX_CLIENT_ID in wrangler.jsonc is still a placeholder."
@@ -110,10 +110,10 @@ else
   warn "$HEALTH_URL did not answer. Expected if nginx and DNS are not configured yet."
   echo
   bold "Remaining manual steps (see DEPLOY.md for the full sequence)"
-  info "1. Point an A record for relay.acp-24.com at 94.46.172.101"
+  info "1. Point an A record for YOUR_DOMAIN at 198.51.100.10"
   info "2. Bootstrap an HTTP-only nginx config for the domain (no cert exists yet)"
-  info "3. certbot certonly --webroot -w /var/www/html -d relay.acp-24.com"
-  info "4. Copy deploy/nginx/relay.acp-24.com.conf into place, replace __EDGE_SECRET__"
+  info "3. certbot certonly --webroot -w /var/www/html -d YOUR_DOMAIN"
+  info "4. Copy deploy/nginx/connector.conf into place, replace __EDGE_SECRET__"
   info "5. nginx -t && systemctl reload nginx"
 fi
 

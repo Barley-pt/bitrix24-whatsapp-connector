@@ -5,7 +5,7 @@ import { fromBase64, nowSec } from './util';
 /**
  * Maestro (acp-license-manager) client, Workers-native.
  *
- * This is a port of acp-companion-app's server/lib/license/{verify,licenseClient}.ts (Node,
+ * This is a port of the companion app's server/lib/license/{verify,licenseClient}.ts (Node,
  * filesystem cache) to Cloudflare Workers (Web Crypto, D1 cache via the `licenses` table - one
  * row per portal, already scoped by portal_id in schema.sql). The signing side lives in
  * acp-license-manager/src/signing.ts; canonicalJson/canonicalPayload below MUST stay byte-for-byte
@@ -264,7 +264,7 @@ export async function deactivate(env: Env, portal: PortalRow): Promise<void> {
     try {
       await post(env, '/v1/deactivate', baseBody(env, portal, row.license_key));
     } catch {
-      /* best effort - ACP can also reclaim the seat server-side via Maestro admin */
+      /* best effort - the seat can also be reclaimed server-side via the Maestro admin */
     }
   }
   await env.DB.prepare('DELETE FROM licenses WHERE portal_id = ?').bind(portal.id).run();

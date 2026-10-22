@@ -35,7 +35,7 @@ export async function resetDb(): Promise<void> {
 export function frameForm(overrides: Record<string, string> = {}): FormData {
   const form = new FormData();
   const base: Record<string, string> = {
-    DOMAIN: 'acp.bitrix24.com',
+    DOMAIN: 'your-portal.bitrix24.com',
     PROTOCOL: '1',
     LANG: 'en',
     APP_SID: 'sid-1',
@@ -57,7 +57,7 @@ export function frameForm(overrides: Record<string, string> = {}): FormData {
  */
 export function frameRequest(url: string, overrides: Record<string, string> = {}): Request {
   const query: Record<string, string> = {
-    DOMAIN: 'acp.bitrix24.com',
+    DOMAIN: 'your-portal.bitrix24.com',
     PROTOCOL: '1',
     LANG: 'en',
     APP_SID: 'sid-1',

@@ -67,7 +67,7 @@ async function adminCall(path: string, init: RequestInit = {}) {
       ...init,
       headers: {
         'X-Edge-Auth': 'test-edge-secret',
-        'X-ACP-Admin-Key': env.ACP_ADMIN_SECRET,
+        'X-Admin-Key': env.ADMIN_SECRET,
         'Content-Type': 'application/json',
         ...(init.headers ?? {}),
       },
@@ -167,7 +167,7 @@ describe('/admin/portals/:domain/license', () => {
     const ctx = createExecutionContext();
     const res = await worker.fetch(
       new Request('https://relay.test/admin/portals/member-1.bitrix24.com/license', {
-        headers: { 'X-Edge-Auth': 'test-edge-secret', 'X-ACP-Admin-Key': 'nope' },
+        headers: { 'X-Edge-Auth': 'test-edge-secret', 'X-Admin-Key': 'nope' },
       }),
       env,
       ctx,

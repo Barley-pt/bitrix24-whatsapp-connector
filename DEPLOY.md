@@ -1,52 +1,51 @@
-# ACPZap deployment runbook
+# Bitrix24 WhatsApp Connector deployment runbook
 
-> Nothing in this guide has been executed yet. ACPZap has never been deployed, so treat the first
-> run as a bring-up, not a routine deploy. Steps that are known-good because maestro and
-> tiktok-leads already do them are marked as such.
+> Nothing in this guide has been executed yet. The connector has never been deployed, so treat the
+> first run as a bring-up, not a routine deploy. Steps that are known-good because other Cloudflare
+> Workers projects already do them are marked as such.
 
 ## Architecture
 
 ```
    customer's Bitrix24 portal
-              |  https://relay.acp-24.com
+              |  https://YOUR_DOMAIN
               v
-   nginx on 94.46.172.101          <- terminates TLS (certbot), sets client IP headers
-              |  https, Host: acpzap.jorge-f-orge.workers.dev
+   edge/reverse-proxy server (198.51.100.10)   <- terminates TLS (certbot), sets client IP headers
+              |  https, Host: your-worker.your-account.workers.dev
               v
-   Cloudflare Worker `acpzap`      <- all compute
+   Cloudflare Worker `bitrix-whatsapp-connector`   <- all compute
               |
               v
-   Cloudflare D1 `acpzap`
+   Cloudflare D1 `bitrix_whatsapp`
 ```
 
-DNS for `acp-24.com` is **not** on Cloudflare, so there is no CF custom domain and no `routes`
-block in `wrangler.jsonc`. nginx reverse-proxies to the `*.workers.dev` origin instead. This is the
-same arrangement maestro and tiktok-leads use.
+If the public domain's DNS is **not** on Cloudflare, there is no CF custom domain and no `routes`
+block in `wrangler.jsonc`. The edge server reverse-proxies to the `*.workers.dev` origin instead -
+the same arrangement used by the other Workers projects on the same account.
 
-The VPS is only a deploy source and a TLS front end. **No application process runs on it**: no PM2
-entry, no port to bind, nothing to restart.
+The edge/reverse-proxy server is only a deploy source and a TLS front end. **No application
+process runs on it**: no PM2 entry, no port to bind, nothing to restart.
 
 ## Prerequisites
 
 | | |
 |---|---|
-| Server | `94.46.172.101`, checkout at `/opt/relay` |
+| Server | `198.51.100.10`, checkout at `/opt/connector` |
 | Node | 20 or 22 (24 breaks the test pool, though tests do not run on the server) |
-| Cloudflare account | `9f38ef5d63d324710645c3e6a146b1e8` |
-| API token | Workers Scripts:Edit + D1:Edit. The maestro token works: `cp /opt/maestro/.deploy.env /opt/relay/.deploy.env` and edit |
+| Cloudflare account | `YOUR_CLOUDFLARE_ACCOUNT_ID` |
+| API token | Workers Scripts:Edit + D1:Edit. Create a dedicated token with just those two permissions and put it in `.deploy.env` |
 
 ```bash
-git clone git@github.com:Barley-pt/ACPZap.git /opt/relay
-cd /opt/relay
+git clone <your-repository-url> /opt/connector
+cd /opt/connector
 cp .deploy.env.example .deploy.env && chmod 600 .deploy.env
 ```
 
-**Secrets hygiene:** `.deploy.env.example` held real, working values (not placeholders) until
-2026-08-05 - it's committed to git, `.deploy.env` itself is git-ignored. If those values (a
-Cloudflare API token, the Bitrix client secret, `APP_SECRET`, `TOKEN_ENC_KEY`, `EDGE_SECRET`,
-the WasenderAPI PAT) were ever used in a real `.deploy.env`, rotate all five/six and re-run
-`wrangler secret put` for each - the repo is private, but a committed file is still the wrong
-place for live credentials.
+**Secrets hygiene:** `.deploy.env.example` must only ever contain placeholders, never live values -
+`.deploy.env` itself is git-ignored. If real credentials (a Cloudflare API token, the Bitrix client
+secret, `APP_SECRET`, `TOKEN_ENC_KEY`, `EDGE_SECRET`, the WasenderAPI PAT) were ever committed or
+reused in a real `.deploy.env`, rotate all of them and re-run `wrangler secret put` for each: a
+committed file is the wrong place for live credentials, private repo or not.
 
 Fill in `.deploy.env`, generating the three secrets you need to invent:
 
@@ -59,7 +58,7 @@ openssl rand -hex 32      # EDGE_SECRET
 ## First deployment
 
 ```bash
-cd /opt/relay && ./scripts/bootstrap.sh
+cd /opt/connector && ./scripts/bootstrap.sh
 ```
 
 It runs six stages: environment check, `npm ci`, D1 setup, secret upload, typecheck and UI build,
@@ -85,7 +84,7 @@ the same commit.
 `bootstrap.sh` cannot do this part; it prints the steps and exits with a warning if the health
 check fails.
 
-1. Point an `A` record for `relay.acp-24.com` at `94.46.172.101`.
+1. Point an `A` record for `YOUR_DOMAIN` at `198.51.100.10`.
 
 2. **Bootstrap with an HTTP-only config first.** The full site config's `443` server block
    references certificate files that do not exist yet, so `nginx -t` fails immediately and
@@ -95,11 +94,11 @@ check fails.
 
 ```bash
 sudo mkdir -p /var/www/html
-sudo tee /etc/nginx/sites-available/relay.acp-24.com >/dev/null <<'EOF'
+sudo tee /etc/nginx/sites-available/YOUR_DOMAIN >/dev/null <<'EOF'
 server {
     listen 80;
     listen [::]:80;
-    server_name relay.acp-24.com;
+    server_name YOUR_DOMAIN;
 
     location /.well-known/acme-challenge/ {
         root /var/www/html;
@@ -110,7 +109,7 @@ server {
     }
 }
 EOF
-sudo ln -sf /etc/nginx/sites-available/relay.acp-24.com /etc/nginx/sites-enabled/
+sudo ln -sf /etc/nginx/sites-available/YOUR_DOMAIN /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
@@ -119,34 +118,33 @@ sudo nginx -t && sudo systemctl reload nginx
    plugin rewrote):
 
 ```bash
-sudo certbot certonly --webroot -w /var/www/html -d relay.acp-24.com
+sudo certbot certonly --webroot -w /var/www/html -d YOUR_DOMAIN
 ```
 
-4. Now that `/etc/letsencrypt/live/relay.acp-24.com/*` exists, install the real site config and
+4. Now that `/etc/letsencrypt/live/YOUR_DOMAIN/*` exists, install the real site config and
    insert the shared secret:
 
 ```bash
-sudo cp /opt/relay/deploy/nginx/relay.acp-24.com.conf /etc/nginx/sites-available/relay.acp-24.com
-sudo sed -i "s/__EDGE_SECRET__/$(grep '^EDGE_SECRET=' /opt/relay/.deploy.env | cut -d'"' -f2)/" \
-  /etc/nginx/sites-available/relay.acp-24.com
+sudo cp /opt/connector/deploy/nginx/connector.conf /etc/nginx/sites-available/YOUR_DOMAIN
+sudo sed -i "s/__EDGE_SECRET__/$(grep '^EDGE_SECRET=' /opt/connector/.deploy.env | cut -d'"' -f2)/" \
+  /etc/nginx/sites-available/YOUR_DOMAIN
 sudo nginx -t && sudo systemctl reload nginx
-curl -s https://relay.acp-24.com/health
+curl -s https://YOUR_DOMAIN/health
 ```
 
-The `EDGE_SECRET` in nginx and the Worker secret must match. If they diverge the app keeps working
-and only the logged client IP degrades to the VPS address.
+The `EDGE_SECRET` in nginx and the Worker must match. If they diverge the app keeps working
+and only the logged client IP degrades to the edge server's own address.
 
 If `/etc/letsencrypt/options-ssl-nginx.conf` or `ssl-dhparams.pem` are missing (they are shared
-boilerplate certbot normally drops on a box's first-ever nginx-plugin run; both maestro and
-tiktok-leads already run on this server, so they should already exist), generate them with
-`sudo certbot --nginx --register-unsafely-without-email -d relay.acp-24.com` once, or copy them
+boilerplate certbot normally drops on a box's first-ever nginx-plugin run), generate them with
+`sudo certbot --nginx --register-unsafely-without-email -d YOUR_DOMAIN` once, or copy them
 from another site on the same box.
 
 ### Bitrix24 application (Market submission)
 
-This ships as a **Market application**, created in the ACP partner account rather than as a local
-app on the portal. A draft version issues working OAuth credentials and can be installed on
-`acp.bitrix24.com` for testing before it is ever published, so nothing waits on Market review.
+This ships as a **Market application**, created in your Bitrix24 partner account rather than as a
+local app on the portal. A draft version issues working OAuth credentials and can be installed on
+your own portal for testing before it is ever published, so nothing waits on Market review.
 
 There are three distinct URL fields in the version card, and Bitrix24's own docs use slightly
 different wording for them across pages - match by what each one *does*, not by the exact label,
@@ -154,9 +152,9 @@ in case the partner portal phrases it differently:
 
 | Field (does what) | Set to | Fires |
 |---|---|---|
-| **Application URL / handler** - what the user's browser loads every time the app is opened | `https://relay.acp-24.com/` | on every open, POST with `AUTH_ID`/`REFRESH_ID`/`member_id` |
-| **Installation wizard URL** - shown once, in a frame, during install | `https://relay.acp-24.com/install` | once, at install; must call `BX24.installFinish()` or Bitrix keeps re-showing this URL instead of the app |
-| **Installation event callback** - a server-to-server POST, no browser involved | `https://relay.acp-24.com/events/install` | automatically right after install, carrying `application_token` - the one thing the wizard frame POST above does not include |
+| **Application URL / handler** - what the user's browser loads every time the app is opened | `https://YOUR_DOMAIN/` | on every open, POST with `AUTH_ID`/`REFRESH_ID`/`member_id` |
+| **Installation wizard URL** - shown once, in a frame, during install | `https://YOUR_DOMAIN/install` | once, at install; must call `BX24.installFinish()` or Bitrix keeps re-showing this URL instead of the app |
+| **Installation event callback** - a server-to-server POST, no browser involved | `https://YOUR_DOMAIN/events/install` | automatically right after install, carrying `application_token` - the one thing the wizard frame POST above does not include |
 
 **Uses only API:** leave unset/no - the app has an interface (the setup UI), so it needs the left
 menu entry rather than being configured as an interface-less callback-only app.
@@ -193,7 +191,7 @@ Two habits follow from this:
 ## Every deployment after that
 
 ```bash
-cd /opt/relay && ./scripts/deploy.sh
+cd /opt/connector && ./scripts/deploy.sh
 ```
 
 `git fetch` and `reset --hard origin/main`, `npm ci`, typecheck, UI build, `wrangler deploy`,
@@ -207,7 +205,7 @@ new version runs.
 
 ### New queues: create dead-letter queues manually first
 
-Confirmed live 2026-08-05: `wrangler deploy` auto-creates a queue declared under `queues.producers`
+Observed during testing: `wrangler deploy` auto-creates a queue declared under `queues.producers`
 or `queues.consumers` in `wrangler.jsonc`, but **not** one that's only referenced as a
 `dead_letter_queue` target - that fails the whole deploy with `Queue "..." does not exist`. Before
 the first deploy that adds a new `*-dlq` queue:
@@ -216,7 +214,7 @@ the first deploy that adds a new `*-dlq` queue:
 npx wrangler queues create <name>-dlq
 ```
 
-Regular queues (`acpzap-inbound`, `acpzap-outbound`) don't need this - only the DLQs.
+Regular queues (`bwac-inbound`, `bwac-outbound`) don't need this - only the DLQs.
 
 Two things the script deliberately does not do:
 
@@ -225,7 +223,7 @@ Two things the script deliberately does not do:
 - **It does not touch secrets.** Those are bootstrap-only. To rotate one, use
   `npx wrangler secret put NAME` directly.
 
-`deploy.sh` discards uncommitted changes in `/opt/relay`. Configuration belongs in git.
+`deploy.sh` discards uncommitted changes in `/opt/connector`. Configuration belongs in git.
 
 ## Schema changes
 
@@ -243,8 +241,8 @@ environments and the test suite stay in step.
 Three things this phase added, none of them automatic on a plain `deploy.sh`:
 
 - **`usage_counters` table** - additive, so `--migrate` picks it up on the next deploy.
-- **`ACP_ADMIN_SECRET` Worker secret** - gates `/admin/*`. Set it in `.deploy.env` and either
-  re-run `bootstrap.sh` (idempotent) or `wrangler secret put ACP_ADMIN_SECRET` directly.
+- **`ADMIN_SECRET` Worker secret** - gates `/admin/*`. Set it in `.deploy.env` and either
+  re-run `bootstrap.sh` (idempotent) or `wrangler secret put ADMIN_SECRET` directly.
 - **Cron trigger** (`wrangler.jsonc`'s `triggers.crons`) - registered automatically by the next
   `wrangler deploy`, no separate step (unlike a new queue, which needs manual creation first).
 
@@ -260,7 +258,7 @@ every deployed environment, so unlike `usage_counters` above, `--migrate` does *
 before deploying the Worker version that reads/writes this column:
 
 ```bash
-npx wrangler d1 execute acpzap --remote --command \
+npx wrangler d1 execute bitrix_whatsapp --remote --command \
   "ALTER TABLE whatsapp_sessions ADD COLUMN group_messages_enabled INTEGER NOT NULL DEFAULT 0"
 ```
 
@@ -268,12 +266,12 @@ Safe to run against a database that already has the column (Wrangler surfaces D1
 column name" error, nothing is altered twice). `schema.sql`'s `CREATE TABLE` already carries the
 column for fresh environments and the test suite.
 
-### Audio transcription rollout (task 4532)
+### Audio transcription rollout
 
 `message_log.transcription` is a new column on an existing table. Run once before deploying:
 
 ```bash
-npx wrangler d1 execute acpzap --remote --command \
+npx wrangler d1 execute bitrix_whatsapp --remote --command \
   "ALTER TABLE message_log ADD COLUMN transcription TEXT"
 ```
 
@@ -285,9 +283,9 @@ Safe to re-run against a database that already has the column. `schema.sql` alre
 handler). Run once before deploying:
 
 ```bash
-npx wrangler d1 execute acpzap --remote --command \
+npx wrangler d1 execute bitrix_whatsapp --remote --command \
   "ALTER TABLE whatsapp_sessions ADD COLUMN last_qr TEXT"
-npx wrangler d1 execute acpzap --remote --command \
+npx wrangler d1 execute bitrix_whatsapp --remote --command \
   "ALTER TABLE whatsapp_sessions ADD COLUMN last_qr_at INTEGER"
 ```
 
@@ -303,22 +301,23 @@ on every app open, so the two new bindings (`ONAPPINSTALL` -> `/events/install`,
 -> `/events/test` when a portal needs repairing) land on every portal the next time anyone opens
 the app. A plain `deploy.sh` is enough.
 
-Background: on 2026-08-10 `b24-ynumvs.bitrix24.com.br` was found with `application_token` NULL.
-That token is the only thing `routes/events.ts`'s `authenticate()` can validate an event against
-when the payload omits `access_token` - which Bitrix documents as normal ("Authorization tokens
-are not always passed to the event handler") - so every `ONIMCONNECTORMESSAGEADD` was answered
-with a silent 200 `ignored` and no operator reply reached WhatsApp for five days. Nothing
-surfaced it: placements rendered, the connector was active, inbound kept flowing.
+Background, from an incident observed during testing: a portal was found with
+`application_token` NULL. That token is the only thing `routes/events.ts`'s `authenticate()` can
+validate an event against when the payload omits `access_token` - which Bitrix documents as normal
+("Authorization tokens are not always passed to the event handler") - so every
+`ONIMCONNECTORMESSAGEADD` was answered with a silent 200 `ignored` and no operator reply reached
+WhatsApp for days. Nothing surfaced it: placements rendered, the connector was active, inbound kept
+flowing.
 
 Its only source was `ONAPPINSTALL`, delivered to whatever the **"Installation event handler URL"**
 field on the Market version card points at - typed by hand, outside this repo, and fatal in a way
-no code path could notice. Verify that field points at `https://relay.acp-24.com/events/install`;
+no code path could notice. Verify that field points at `https://YOUR_DOMAIN/events/install`;
 binding the event explicitly now means a wrong value there is no longer a single point of failure.
 
 To check any portal:
 
 ```bash
-npx wrangler d1 execute acpzap --remote --command \
+npx wrangler d1 execute bitrix_whatsapp --remote --command \
   "SELECT bitrix_domain, status, application_token IS NULL AS events_broken FROM portals"
 ```
 
@@ -331,10 +330,10 @@ the app genuinely needs reinstalling on that portal.
 
 Two steps, both **before** deploying the Worker version that carries them.
 
-1. **`EDGE_SECRET` Worker secret** - `src/middleware/edgeAuth.ts` gates `/webhook/*`, `/api/*` and
-   `/admin/*` on the `X-Edge-Auth` header nginx already sends, and it **fails closed**: with the
-   binding unset every one of those routes answers `403 FORBIDDEN`, which takes the app down. It
-   must hold exactly the value in `deploy/nginx/relay.acp-24.com.conf`'s `X-Edge-Auth` header.
+1. **`EDGE_SECRET` Worker secret** - recommended whenever a reverse proxy fronts the Worker.
+   `src/middleware/edgeAuth.ts` gates `/webhook/*`, `/api/*` and `/admin/*` on the `X-Edge-Auth`
+   header the proxy already sends. When the binding is unset the gate is skipped entirely; when
+   set, it must hold exactly the value in `deploy/nginx/connector.conf`'s `X-Edge-Auth` header.
 
    ```bash
    npx wrangler secret list                  # confirm whether EDGE_SECRET is already set
@@ -345,16 +344,17 @@ Two steps, both **before** deploying the Worker version that carries them.
    hand to land it ahead of time (idempotent, safe to re-run):
 
    ```bash
-   npx wrangler d1 execute acpzap --remote --command \
+   npx wrangler d1 execute bitrix_whatsapp --remote --command \
      "CREATE TABLE IF NOT EXISTS webhook_rate (session_id TEXT NOT NULL, bucket_min INTEGER NOT NULL, count INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (session_id, bucket_min))"
    ```
 
-Background: on 2026-09 an attacker holding a valid `webhook_secret` pushed 6,793 requests straight
-at the `*.workers.dev` URL - bypassing nginx entirely - of which 2,638 were enqueued and 1,216
-reached Bitrix. The secret has been rotated; the edge gate closes the direct path, and
-`WEBHOOK_RATE_LIMIT_PER_MIN` (240, `src/routes/webhook.ts`) caps what any single session can push
-through per minute even with a valid secret. Both rejection paths log single-line JSON with the
-source IP, so `wrangler tail` shows a flood as it happens.
+Background, from an incident observed during testing: an attacker holding a valid
+`webhook_secret` pushed 6,793 requests straight at the `*.workers.dev` URL - bypassing the reverse
+proxy entirely - of which 2,638 were enqueued and 1,216 reached Bitrix. The secret was rotated;
+when configured, the edge gate closes the direct path, and `WEBHOOK_RATE_LIMIT_PER_MIN` (240,
+`src/routes/webhook.ts`) caps what any single session can push through per minute even with a
+valid secret. Both rejection paths log single-line JSON with the source IP, so `wrangler tail`
+shows a flood as it happens.
 
 ### The connector disappearing from Contact Center after a reinstall
 
@@ -370,7 +370,7 @@ rebuilds the connector and every placement. To repair a portal already stuck in 
 reinstalling, bump `CONNECTOR_VERSION` and deploy - the next app open re-registers it. Check with:
 
 ```bash
-npx wrangler d1 execute acpzap --remote --command \
+npx wrangler d1 execute bitrix_whatsapp --remote --command \
   "SELECT bitrix_domain, status, connector_version FROM portals"
 ```
 
@@ -380,7 +380,7 @@ npx wrangler d1 execute acpzap --remote --command \
 up. Run once, by hand, before deploying the Worker version that reads it:
 
 ```bash
-npx wrangler d1 execute acpzap --remote --command \
+npx wrangler d1 execute bitrix_whatsapp --remote --command \
   "ALTER TABLE chat_map ADD COLUMN bitrix_line_id INTEGER"
 ```
 
@@ -391,9 +391,9 @@ stranded one, which is the only outcome that can work. No cleanup script is need
 
 Why it exists: Bitrix pins an Open Line chat to the line it was created on and never migrates it -
 the id is baked into the CRM contact's own IM identifier, e.g.
-`imol|acp_whatsapp|6|351967380902@s.whatsapp.net|1030`. Re-binding a number to a different Open
-Line therefore strands every earlier chat. Confirmed live 2026-08-11 on contact 884: the operator's
-reply failed instantly and emitted no connector event at all, because line 6 had been deactivated.
+`imol|whatsapp_connector|6|351967380902@s.whatsapp.net|1030`. Re-binding a number to a different
+Open Line therefore strands every earlier chat. Observed during testing: the operator's reply
+failed instantly and emitted no connector event at all, because the line had been deactivated.
 
 ### chat_map: one chat per contact (jid instability) + chat naming/avatar
 
@@ -403,11 +403,11 @@ must run before deploying** the Worker version that carries this change: it SELE
 one of them.
 
 ```bash
-npx wrangler d1 execute acpzap --remote --command \
+npx wrangler d1 execute bitrix_whatsapp --remote --command \
   "ALTER TABLE chat_map ADD COLUMN chat_id TEXT"
-npx wrangler d1 execute acpzap --remote --command \
+npx wrangler d1 execute bitrix_whatsapp --remote --command \
   "ALTER TABLE chat_map ADD COLUMN wa_picture TEXT"
-npx wrangler d1 execute acpzap --remote --command \
+npx wrangler d1 execute bitrix_whatsapp --remote --command \
   "ALTER TABLE chat_map ADD COLUMN chat_named INTEGER NOT NULL DEFAULT 0"
 ```
 
@@ -419,21 +419,21 @@ Then backfill `chat_id` - before this column existed, the jid a row was keyed by
 `chat.id` Bitrix created that chat with:
 
 ```bash
-npx wrangler d1 execute acpzap --remote --command \
+npx wrangler d1 execute bitrix_whatsapp --remote --command \
   "UPDATE chat_map SET chat_id = wa_jid WHERE chat_id IS NULL"
 ```
 
 Then collapse contacts that were split across two rows (one per jid) to one row per
 `(session_id, wa_phone)`, keeping the live conversation - the row with the greatest
-`last_message_at`. Preview first; verified in production at 269 rows with exactly 6 duplicates and
+`last_message_at`. Preview first; verified at 269 rows with exactly 6 duplicates and
 0 rows with NULL `wa_phone` (the delete is still guarded on `wa_phone IS NOT NULL`, so a row with
 no phone is never touched):
 
 ```bash
-npx wrangler d1 execute acpzap --remote --command \
+npx wrangler d1 execute bitrix_whatsapp --remote --command \
   "SELECT session_id, wa_phone, COUNT(*) AS n FROM chat_map WHERE wa_phone IS NOT NULL GROUP BY session_id, wa_phone HAVING COUNT(*) > 1"
 
-npx wrangler d1 execute acpzap --remote --command \
+npx wrangler d1 execute bitrix_whatsapp --remote --command \
   "DELETE FROM chat_map WHERE wa_phone IS NOT NULL AND id NOT IN (SELECT id FROM (SELECT id, ROW_NUMBER() OVER (PARTITION BY session_id, wa_phone ORDER BY last_message_at DESC, id DESC) AS rn FROM chat_map WHERE wa_phone IS NOT NULL) WHERE rn = 1)"
 ```
 
@@ -443,7 +443,7 @@ which the exact-match dedupe above cannot see; this should also return no rows, 
 does return is worth resolving by hand rather than by script:
 
 ```bash
-npx wrangler d1 execute acpzap --remote --command \
+npx wrangler d1 execute bitrix_whatsapp --remote --command \
   "SELECT session_id, REPLACE(wa_phone, '+', '') AS digits, COUNT(*) AS n FROM chat_map WHERE wa_phone IS NOT NULL AND wa_phone NOT LIKE '%@g.us' GROUP BY session_id, digits HAVING COUNT(*) > 1"
 ```
 
@@ -453,12 +453,13 @@ still holding two rows resolves to the newest one - the same row the dedupe keep
 until then a contact can keep flip-flopping between which of its two rows is "newest".
 
 The dedupe only fixes D1. The stale second chat each split contact got in Bitrix stays where it
-is (acp line 2: 5398/5400, 5396/5406; customer line 3: 160777/160779) - operators should close the
-dead one by hand. Going forward the contact's messages all land in the chat its `chat_id` names.
+is (e.g. chats 5398/5400 and 5396/5406 on one line, 160777/160779 on another) - operators should
+close the dead one by hand. Going forward the contact's messages all land in the chat its
+`chat_id` names.
 
 Why: WhatsApp addresses one contact under two jids over time - the phone jid
 (`5511964253002@s.whatsapp.net`) and the privacy LID (`37039881908374@lid`) - and can switch at
-any point, mid-conversation included. ACPZap used to pass the raw `remoteJid` as Bitrix's
+any point, mid-conversation included. The connector used to pass the raw `remoteJid` as Bitrix's
 `chat.id`, and Bitrix finds the Open Line chat by CONNECTOR+LINE+CHAT_ID, so every switch opened a
 second chat and the operator's open one went silent ("my replies are sent but nothing comes in").
 Click-to-chat made it certain: `startConversation` creates the chat under the phone jid, so the
@@ -496,10 +497,11 @@ webhook and is the way to confirm a Line still exists and is `ACTIVE: Y`.
 
 Worth understanding before adding rate limiting, abuse controls or the phase 7 admin panel.
 
-Requests reach the Worker through nginx, so from Cloudflare's point of view **the VPS is the
-client**. The edge sets `CF-Connecting-IP` to `94.46.172.101` and appends the same address to
-`X-Forwarded-For`. Both headers are therefore useless for identifying the caller, and anything
-keyed on them collapses every tenant into one bucket. Maestro has this exact bug open today.
+Requests reach the Worker through the reverse proxy, so from Cloudflare's point of view **the
+proxy server is the client**. The edge sets `CF-Connecting-IP` to its own address (e.g.
+`198.51.100.10`) and appends the same address to `X-Forwarded-For`. Both headers are therefore
+useless for identifying the caller, and anything keyed on them collapses every tenant into one
+bucket.
 
 The fix is in two halves:
 
@@ -524,7 +526,7 @@ npx wrangler rollback --message "reason"
 To go back by source instead:
 
 ```bash
-git -C /opt/relay reset --hard <good-sha>
+git -C /opt/connector reset --hard <good-sha>
 ./scripts/deploy.sh --skip-pull
 ```
 

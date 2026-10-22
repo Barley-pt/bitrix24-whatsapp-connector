@@ -1,9 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "acpzap",
+  "name": "bitrix-whatsapp-connector",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-01",
-  "account_id": "9f38ef5d63d324710645c3e6a146b1e8",
+  "account_id": "YOUR_CLOUDFLARE_ACCOUNT_ID",
 
   "observability": { "enabled": true },
 
@@ -11,15 +11,15 @@
   // served directly. run_worker_first is required: without it, Cloudflare auto-serves index.html
   // for any GET matching a static path (including "/") BEFORE our Hono routing runs, bypassing
   // the server-side session-token substitution entirely and shipping the raw, un-substituted
-  // placeholder to the browser - confirmed live via `curl https://relay.acp-24.com/`
-  // (CF-Cache-Status: HIT, body still containing the literal "__ACPZAP_BOOTSTRAP__" string).
+  // placeholder to the browser (observed as a CF cache hit whose body still contained the
+  // literal "__CONNECTOR_BOOTSTRAP__" string).
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
 
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "acpzap",
-      "database_id": "9f94e9ef-5356-40e1-9eb7-f8d3ecde3635"
+      "database_name": "bitrix_whatsapp",
+      "database_id": "YOUR_D1_DATABASE_ID"
     }
   ],
 
@@ -28,32 +28,31 @@
   // failing upstream never holds up Wasender's webhook delivery or Bitrix's event delivery.
   //
   // New queues declared here are NOT auto-created by `wrangler deploy` when they're only
-  // referenced as a dead_letter_queue target (confirmed live 2026-08-05) - run
-  // `wrangler queues create <name>` for each *-dlq queue once before the first deploy that adds
-  // one.
+  // referenced as a dead_letter_queue target - run `wrangler queues create <name>` for each
+  // *-dlq queue once before the first deploy that adds one.
   "queues": {
     "producers": [
-      { "binding": "INBOUND_QUEUE", "queue": "acpzap-inbound" },
-      { "binding": "OUTBOUND_QUEUE", "queue": "acpzap-outbound" }
+      { "binding": "INBOUND_QUEUE", "queue": "bwac-inbound" },
+      { "binding": "OUTBOUND_QUEUE", "queue": "bwac-outbound" }
     ],
     "consumers": [
       {
-        "queue": "acpzap-inbound",
+        "queue": "bwac-inbound",
         "max_batch_size": 10,
         "max_batch_timeout": 5,
         // Genuine failures (Bitrix down, auth broken) only - the "not bound to a Line yet" wait
         // is handled by the consumer re-enqueueing itself, not by this retry budget, so it never
         // competes with real failures for the same DLQ threshold.
         "max_retries": 5,
-        "dead_letter_queue": "acpzap-inbound-dlq"
+        "dead_letter_queue": "bwac-inbound-dlq"
       },
       {
-        "queue": "acpzap-inbound-dlq",
+        "queue": "bwac-inbound-dlq",
         "max_batch_size": 10,
         "max_batch_timeout": 5
       },
       {
-        "queue": "acpzap-outbound",
+        "queue": "bwac-outbound",
         "max_batch_size": 10,
         "max_batch_timeout": 5,
         // A 429 retries with delaySeconds set from Wasender's own x-ratelimit-reset (index.ts),
@@ -61,10 +60,10 @@
         // bounded (Wasender's reset window, not a multi-hour operator action), so a message that
         // is still failing after 5 tries genuinely belongs in the dead-letter queue.
         "max_retries": 5,
-        "dead_letter_queue": "acpzap-outbound-dlq"
+        "dead_letter_queue": "bwac-outbound-dlq"
       },
       {
-        "queue": "acpzap-outbound-dlq",
+        "queue": "bwac-outbound-dlq",
         "max_batch_size": 10,
         "max_batch_timeout": 5
       }
@@ -72,11 +71,11 @@
   },
 
   "vars": {
-    "PUBLIC_URL": "https://relay.acp-24.com",
+    "PUBLIC_URL": "https://YOUR_WORKERS_SUBDOMAIN.workers.dev",
 
     // Bitrix24 connector identity. ID must stay lowercase/digits/underscore (dots are rejected).
-    "CONNECTOR_ID": "acp_whatsapp",
-    "CONNECTOR_NAME": "WhatsApp (ACP)",
+    "CONNECTOR_ID": "whatsapp_connector",
+    "CONNECTOR_NAME": "WhatsApp",
 
     // Bumping this re-runs imconnector.register AND the CRM_TAB_PLACEMENTS placement.bind calls
     // (connector.ts's ensureConnectorRegistered) on the next portal load. This number is only
@@ -85,35 +84,27 @@
     // uninstall/reinstall OR a swap to an entirely different registered app. Either one leaves
     // connector_version pointing at a registration that no longer exists under the current app's
     // OAuth context. Bump this every time BITRIX_CLIENT_ID changes, not only when connector
-    // metadata (name/icon/handler) changes - confirmed live 2026-08-05 twice: once across a
-    // reinstall of the same app, once across a swap to a brand new app registration. Bumped to 4
-    // for the CRM detail-tab click-to-chat widget (src/crm.ts), and to 5 to also cover Smart
-    // Process (SPA) types (CRM_DYNAMIC_<entityTypeId>_DETAIL_TAB, bindDynamicCrmTabPlacements).
-    //
-    // Bumped to 6 as a repair rather than a metadata change: b24-ynumvs.bitrix24.com.br was left
-    // with connector_version 5 describing a registration Bitrix had already dropped on uninstall,
-    // so its reinstall skipped imconnector.register and Contact Center stayed empty (2026-08-11).
-    // The install paths no longer trust that column at all (ensureConnectorRegistered's `force`),
-    // which prevents a recurrence; this bump is what heals the portal already in that state,
-    // without needing another uninstall/reinstall cycle - any app open re-registers it.
+    // metadata (name/icon/handler) changes. Bumping it also heals a portal left behind with a
+    // stale version (a reinstall whose stored version still matched, so imconnector.register was
+    // skipped and Contact Center stayed empty): the install paths no longer trust that column at
+    // all (ensureConnectorRegistered's `force`), so the bump only re-registers portals already in
+    // that state, without needing another uninstall/reinstall cycle - any app open does it.
     "CONNECTOR_VERSION": "8",
     "APP_VERSION": "0.1.0",
 
     // Public half of the Bitrix24 app credentials (the secret half is a Worker secret).
-    "BITRIX_CLIENT_ID": "app.6a73920b62b9a4.12691684",
+    "BITRIX_CLIENT_ID": "YOUR_BITRIX_CLIENT_ID",
 
     // Maestro licensing (see the maestro-licensing skill). Public key is safe to commit.
     "LICENSE_SERVER_URL": "https://maestro.acp-24.com",
-    // "ACPZap" is only this repo's internal codename - the shipped product is "Message2Garcia",
-    // and "garcia-relay" is its registered Maestro product slug (not "acp-relay" - that was a
-    // placeholder from before the product had a real name).
-    "LICENSE_PRODUCT": "garcia-relay",
+    // Registered Maestro product slug for this app - see src/license.ts.
+    "LICENSE_PRODUCT": "wa-connector",
     "LICENSE_PUBLIC_KEY": "MCowBQYDK2VwAyEAlDC/VXlkxQNMnZySCc8Ei9n58vkxGrEFp4+2Ee10pEs=",
-    // Turned on 2026-08-06: the only live portal (acp.bitrix24.com) has an active garcia-relay
-    // license bound (ACP-QY5Z-ZMT1-BKC4-E8DG). Safe to flip further customers on only after each
-    // one has a key bound via POST /admin/portals/:domain/license - an unkeyed portal is blocked
-    // outright the moment this is true.
-    "LICENSE_ENFORCE": "true",
+    // Set to "true" to gate provisioning and new conversations behind an active license.
+    // Leave it "false" until every portal has a key bound via
+    // POST /admin/portals/:domain/license - an unkeyed portal is blocked outright the moment
+    // this is true.
+    "LICENSE_ENFORCE": "false",
 
     "WASENDER_BASE_URL": "https://wasenderapi.com"
   },
@@ -122,15 +113,17 @@
   // after sending (or by a cron cleanup if the send never completed).
   "r2_buckets": [
     {
-      "bucket_name": "acpzap-audio-staging",
+      "bucket_name": "bwac-audio-staging",
       "binding": "AUDIO_STAGING"
     }
   ],
-  // refreshAllPortals). ensureFresh skips anything still inside its 12h staleness window, so an
-  // hourly tick is cheap - it exists to notice a revoke/expiry within roughly an hour rather than
-  // waiting for a portal to happen to load the app again.
+
+  // Hourly license revalidation (license.ts's refreshAllPortals via the scheduled handler).
+  // ensureFresh skips anything still inside its 12h staleness window, so an hourly tick is cheap
+  // - it exists to notice a revoke/expiry within roughly an hour rather than waiting for a portal
+  // to happen to load the app again.
   "triggers": { "crons": ["13 * * * *"] }
 
   // Secrets (wrangler secret put): BITRIX_CLIENT_SECRET, APP_SECRET, TOKEN_ENC_KEY,
-  // WASENDER_MASTER_TOKEN (phase 2), ACP_ADMIN_SECRET (phase 5 - gates /admin/*).
+  // WASENDER_MASTER_TOKEN, ADMIN_SECRET (gates /admin/*), EDGE_SECRET (optional edge gate).
 }

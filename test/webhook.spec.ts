@@ -10,7 +10,7 @@ const WASENDER = 'https://wasender.test';
 
 const CREATED = {
   id: 106487,
-  name: 'ACP UAE',
+  name: 'Acme Support',
   phone_number: '+971557801481',
   api_key: 'session-api-key-abc',
   webhook_secret: 'webhook-secret-xyz',
@@ -59,7 +59,7 @@ async function seedSession(): Promise<{ sessionId: string; webhookToken: string 
 
   const res = await apiCall('/api/sessions', 'member-1', {
     method: 'POST',
-    body: JSON.stringify({ name: 'ACP UAE', phoneNumber: '+971557801481' }),
+    body: JSON.stringify({ name: 'Acme Support', phoneNumber: '+971557801481' }),
   });
   const sessionId = ((await res.json()) as { session: { id: string } }).session.id;
 

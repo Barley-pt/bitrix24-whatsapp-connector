@@ -56,10 +56,10 @@ export class WasenderError extends Error {
 }
 
 /**
- * Events ACPZap subscribes to. `messages.upsert` was added to fix a real bug: messages typed on
+ * Events the connector subscribes to. `messages.upsert` was added to fix a real bug: messages typed on
  * the business phone's WhatsApp app (not sent through Bitrix) never reached the Open Line,
  * because `messages.received` only fires for incoming messages. The cost, and the reason upsert
- * was excluded originally, is that it also echoes every message ACPZap itself sends through
+ * was excluded originally, is that it also echoes every message the connector itself sends through
  * outbound.ts - both look identical (`fromMe: true`). webhook.ts drops `fromMe: false` upsert
  * deliveries outright (messages.received already covers those); inbound.ts's
  * `detectOutboundEcho` then tells a genuine app-typed message apart from an echo of our own send
@@ -412,7 +412,7 @@ export interface GroupMetadata {
 
 /**
  * The `messages.received` webhook payload's `data.messages` value. Modeled loosely and on
- * demand (only the fields ACPZap actually reads) rather than the full WhatsApp message schema -
+ * demand (only the fields the connector actually reads) rather than the full WhatsApp message schema -
  * everything else is opaque data passed through to decryptMedia untouched.
  */
 export interface InboundMessage {

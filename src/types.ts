@@ -54,7 +54,7 @@ export interface InboundNoteQueueMessage {
 /**
  * Enqueued by /events/message-add (ONIMCONNECTORMESSAGEADD), one per MESSAGES[] item, consumed by
  * index.ts's queue() handler / src/outbound.ts. `waJid` is `chat.id` from the event - the same
- * external chat id ACPZap set when it called imconnector.send.messages in phase 3, so it doubles
+ * external chat id the connector set when it called imconnector.send.messages in phase 3, so it doubles
  * as the chat_map lookup key for resolving the real phone number to send to.
  */
 /**
@@ -108,14 +108,14 @@ export interface Env {
   BITRIX_CLIENT_SECRET: string;
   APP_SECRET: string;
   TOKEN_ENC_KEY: string;
-  /** Gates /admin/*: ACP-only, shared secret sent as X-ACP-Admin-Key. Never exposed to a portal. */
-  ACP_ADMIN_SECRET: string;
+  /** Gates /admin/*: operator-only shared secret sent as X-Admin-Key. Never exposed to a portal. */
+  ADMIN_SECRET: string;
   /**
    * Shared with the nginx front end. Only when a request presents it do we believe the
    * X-Real-Client-IP header it carries. Unset means "trust nothing, use CF-Connecting-IP".
    */
   EDGE_SECRET?: string;
-  /** ACP's WasenderAPI Personal Access Token. Creates and manages sessions; never sends messages. */
+  /** WasenderAPI master Personal Access Token. Creates and manages sessions; never sends messages. */
   WASENDER_MASTER_TOKEN: string;
 
   // R2 bindings

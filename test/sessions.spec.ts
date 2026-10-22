@@ -15,7 +15,7 @@ const WASENDER = 'https://wasender.test';
 // has never attempted to connect, so there is nothing to report yet (see docs/wasenderapi.md).
 const CREATED = {
   id: 106487,
-  name: 'ACP UAE',
+  name: 'Acme Support',
   phone_number: '+971557801481',
   api_key: 'session-api-key-abc',
   webhook_secret: 'webhook-secret-xyz',
@@ -86,7 +86,7 @@ describe('POST /api/sessions', () => {
 
     const res = await call('/api/sessions', 'member-1', {
       method: 'POST',
-      body: JSON.stringify({ name: 'ACP UAE', phoneNumber: '+971557801481' }),
+      body: JSON.stringify({ name: 'Acme Support', phoneNumber: '+971557801481' }),
     });
 
     expect(res.status).toBe(201);
@@ -125,7 +125,7 @@ describe('POST /api/sessions', () => {
     // No interceptor registered: any upstream call would fail the test.
     const res = await call('/api/sessions', 'member-1', {
       method: 'POST',
-      body: JSON.stringify({ name: 'ACP UAE', phoneNumber: '00971557801481' }),
+      body: JSON.stringify({ name: 'Acme Support', phoneNumber: '00971557801481' }),
     });
 
     expect(res.status).toBe(400);
@@ -144,7 +144,7 @@ describe('POST /api/sessions', () => {
 
     const res = await call('/api/sessions', 'member-1', {
       method: 'POST',
-      body: JSON.stringify({ name: 'ACP UAE', phoneNumber: '+971557801481' }),
+      body: JSON.stringify({ name: 'Acme Support', phoneNumber: '+971557801481' }),
     });
 
     expect(res.status).toBe(502);
@@ -181,7 +181,7 @@ describe('POST /api/sessions/:id/bind', () => {
 
     const res = await call('/api/sessions', 'member-1', {
       method: 'POST',
-      body: JSON.stringify({ name: 'ACP UAE', phoneNumber: '+971557801481' }),
+      body: JSON.stringify({ name: 'Acme Support', phoneNumber: '+971557801481' }),
     });
     return ((await res.json()) as { session: { id: string } }).session.id;
   }
@@ -226,13 +226,13 @@ describe('POST /api/sessions/:id/bind', () => {
 
     const firstRes = await call('/api/sessions', 'member-1', {
       method: 'POST',
-      body: JSON.stringify({ name: 'ACP UAE 1', phoneNumber: '+971557801481' }),
+      body: JSON.stringify({ name: 'Acme Support 1', phoneNumber: '+971557801481' }),
     });
     const first = ((await firstRes.json()) as { session: { id: string } }).session.id;
 
     const secondRes = await call('/api/sessions', 'member-1', {
       method: 'POST',
-      body: JSON.stringify({ name: 'ACP UAE 2', phoneNumber: '+971557801482' }),
+      body: JSON.stringify({ name: 'Acme Support 2', phoneNumber: '+971557801482' }),
     });
     const second = ((await secondRes.json()) as { session: { id: string } }).session.id;
 
@@ -295,7 +295,7 @@ describe('POST /api/sessions/:id/group-messages', () => {
 
     const res = await call('/api/sessions', 'member-1', {
       method: 'POST',
-      body: JSON.stringify({ name: 'ACP UAE', phoneNumber: '+971557801481' }),
+      body: JSON.stringify({ name: 'Acme Support', phoneNumber: '+971557801481' }),
     });
     return ((await res.json()) as { session: { id: string } }).session.id;
   }
@@ -511,7 +511,7 @@ describe('session scoping', () => {
 
     const created = await call('/api/sessions', 'member-1', {
       method: 'POST',
-      body: JSON.stringify({ name: 'ACP UAE', phoneNumber: '+971557801481' }),
+      body: JSON.stringify({ name: 'Acme Support', phoneNumber: '+971557801481' }),
     });
     const { session } = (await created.json()) as { session: { id: string } };
 
@@ -531,7 +531,7 @@ describe('QR flow', () => {
 
     const res = await call('/api/sessions', 'member-1', {
       method: 'POST',
-      body: JSON.stringify({ name: 'ACP UAE', phoneNumber: '+971557801481' }),
+      body: JSON.stringify({ name: 'Acme Support', phoneNumber: '+971557801481' }),
     });
     return ((await res.json()) as { session: { id: string } }).session.id;
   }

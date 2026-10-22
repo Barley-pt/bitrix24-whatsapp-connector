@@ -1,6 +1,6 @@
 export type Theme = 'light' | 'dark';
 
-const KEY = 'acpzap.theme';
+const KEY = 'bwac.theme';
 
 /** System preference is the default; an explicit choice overrides it and persists. */
 export function resolveTheme(): Theme {

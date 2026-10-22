@@ -1,4 +1,4 @@
--- ACPZap - D1 schema (database: acpzap)
+-- Bitrix24 WhatsApp Connector - D1 schema (database: bitrix_whatsapp)
 -- Idempotent: safe to re-run. Covers phases 1-5; phase 8 (n8n) columns land with phase 8.
 
 -- One row per installation of the app on a Bitrix24 portal.
@@ -46,10 +46,10 @@ CREATE TABLE IF NOT EXISTS licenses (
 CREATE TABLE IF NOT EXISTS whatsapp_sessions (
   id                  TEXT PRIMARY KEY,
   portal_id           TEXT NOT NULL REFERENCES portals(id) ON DELETE CASCADE,
-  -- 'acp' = provisioned under ACP's master WasenderAPI account (default, see decision 7.1).
+  -- 'master' = provisioned under the maintainer's master WasenderAPI account (default).
   -- 'byo' = customer supplied their own token, stored encrypted in wasender_api_key.
-  provisioning_mode   TEXT NOT NULL DEFAULT 'acp',
-  wasender_api_key    TEXT,                 -- AES-GCM encrypted; NULL when provisioning_mode='acp'
+  provisioning_mode   TEXT NOT NULL DEFAULT 'master',
+  wasender_api_key    TEXT,                 -- AES-GCM encrypted; NULL when provisioning_mode='master'
   wasender_session_id TEXT,
   -- Wasender's per-session webhook secret. Sent back to us verbatim in the x-webhook-signature
   -- header and compared as a plain string, so it is a bearer credential, not a signature.
@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS chat_map (
   -- The exact external chat.id Bitrix knows this contact's Open Line chat by: the jid the chat was
   -- created with. Set once on INSERT and never overwritten - Bitrix finds/creates the chat by
   -- CONNECTOR+LINE+CHAT_ID, and the value is also baked into the CRM contact's IM identifier
-  -- (`imol|acp_whatsapp|<line>|<chat_id>|<user>`, see bitrix_line_id below). Passing the raw,
+  -- (`imol|whatsapp_connector|<line>|<chat_id>|<user>`, see bitrix_line_id below). Passing the raw,
   -- jid-of-the-moment remoteJid instead is what split one customer across two Bitrix chats when
   -- their jid flipped: acp line 2 chats 5398 (phone jid) + 5400 (LID), customer line 3 chats
   -- 160777 + 160779 created 3 minutes apart mid-conversation. A brand-new contact gets
@@ -138,7 +138,7 @@ CREATE TABLE IF NOT EXISTS chat_map (
   bitrix_chat_id  INTEGER,
   -- The Open Line this chat was actually created on. Bitrix pins a conversation to its line
   -- permanently - the id is baked into the CRM contact's own IM identifier, e.g.
-  -- `imol|acp_whatsapp|6|351967380902@s.whatsapp.net|1030` - so a chat_map row only stays valid
+  -- `imol|whatsapp_connector|6|351967380902@s.whatsapp.net|1030` - so a chat_map row only stays valid
   -- while the session still feeds that same line. Re-binding a number to a different line
   -- (sessions.ts's bindLine) leaves every earlier row pointing into the old one, and the
   -- click-to-chat widget then reopens a dead chat instead of starting a fresh one: confirmed live

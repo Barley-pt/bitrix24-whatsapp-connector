@@ -3,8 +3,8 @@ import type { Env } from '../types';
 import { clientIp, timingSafeEqual } from '../util';
 
 /**
- * Every legitimate request reaches this Worker through the nginx in front of relay.acp-24.com
- * (deploy/nginx/relay.acp-24.com.conf), which stamps X-Edge-Auth: $EDGE_SECRET on everything it
+ * Every legitimate request reaches this Worker through the nginx in front of YOUR_DOMAIN
+ * (deploy/nginx/YOUR_DOMAIN.conf), which stamps X-Edge-Auth: $EDGE_SECRET on everything it
  * proxies - the Wasender webhook, Bitrix event handlers and the SPA's own /api and /admin calls
  * alike. The Worker is also reachable directly on its workers.dev URL, which is how the
  * 2026-09 flood reached the inbound webhook with nothing but a (since rotated) webhook_secret:
@@ -15,7 +15,7 @@ import { clientIp, timingSafeEqual } from '../util';
  * `wrangler secret put EDGE_SECRET` before deploying.
  *
  * An additional layer only - the routes behind it keep their own auth (the webhook's
- * webhook_secret, /api/*'s signed app session, /admin/*'s X-ACP-Admin-Key).
+ * webhook_secret, /api/*'s signed app session, /admin/*'s X-Admin-Key).
  */
 export const requireEdgeAuth: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => {
   const provided = c.req.header('X-Edge-Auth');

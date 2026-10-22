@@ -1,8 +1,8 @@
 {
-  "name": "acpzap",
+  "name": "bitrix24-whatsapp-connector",
   "version": "0.1.0",
   "private": true,
-  "description": "ACP WhatsApp Connector - Bitrix24 Open Channel x WasenderAPI",
+  "description": "Bitrix24 WhatsApp Connector - Bitrix24 Open Channel x WasenderAPI",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",

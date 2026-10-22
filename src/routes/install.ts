@@ -74,7 +74,7 @@ const restBase = (p: BitrixFramePayload) =>
 
 /**
  * The connector-settings placement carries which Open Line is being configured as a JSON string:
- * `{"CONNECTOR":"acp_whatsapp","LINE":"12"}`. LINE arrives as a string; everything else about
+ * `{"CONNECTOR":"whatsapp_connector","LINE":"12"}`. LINE arrives as a string; everything else about
  * this payload is Bitrix-controlled, so a malformed or missing value just means "no line picked
  * yet" rather than an error.
  */
@@ -195,7 +195,7 @@ installRoutes.post('/install', async (c) => {
 
   return c.html(
     `<!doctype html>
-<html><head><meta charset="utf-8"><title>ACPZap</title>
+<html><head><meta charset="utf-8"><title>WhatsApp Connector</title>
 <script src="//api.bitrix24.com/api/v1/"></script></head>
 <body style="font:14px/1.5 system-ui;padding:24px;color:#1f2937">
 <p>WhatsApp connector installed.</p>
@@ -244,8 +244,8 @@ installRoutes.post('/crm/tab', async (c) => {
  * accessible") against a handler that only accepted POST. Every URL field needs one of these.
  */
 installRoutes.get('/', (c) =>
-  c.text('ACPZap - open this app from inside your Bitrix24 portal.', 200),
+  c.text('WhatsApp Connector - open this app from inside your Bitrix24 portal.', 200),
 );
 installRoutes.get('/install', (c) =>
-  c.text('ACPZap - open this app from inside your Bitrix24 portal.', 200),
+  c.text('WhatsApp Connector - open this app from inside your Bitrix24 portal.', 200),
 );

@@ -93,7 +93,7 @@ describe('clientIp', () => {
 
   it('prefers the nginx header when the edge secret matches', () => {
     const req = build({
-      'CF-Connecting-IP': '94.46.172.101',
+      'CF-Connecting-IP': '198.51.100.10',
       'X-Real-Client-IP': '203.0.113.9',
       'X-Edge-Auth': 'edge-secret',
     });
@@ -101,20 +101,20 @@ describe('clientIp', () => {
   });
 
   it('ignores a spoofed header without the edge secret', () => {
-    const req = build({ 'CF-Connecting-IP': '94.46.172.101', 'X-Real-Client-IP': '203.0.113.9' });
+    const req = build({ 'CF-Connecting-IP': '198.51.100.10', 'X-Real-Client-IP': '203.0.113.9' });
 
     // Direct workers.dev callers can set any header they like, so an unaccompanied claim loses.
-    expect(clientIp(req, 'edge-secret')).toBe('94.46.172.101');
-    expect(clientIp(req, undefined)).toBe('94.46.172.101');
+    expect(clientIp(req, 'edge-secret')).toBe('198.51.100.10');
+    expect(clientIp(req, undefined)).toBe('198.51.100.10');
   });
 
   it('ignores a mismatched edge secret', () => {
     const req = build({
-      'CF-Connecting-IP': '94.46.172.101',
+      'CF-Connecting-IP': '198.51.100.10',
       'X-Real-Client-IP': '203.0.113.9',
       'X-Edge-Auth': 'wrong',
     });
-    expect(clientIp(req, 'edge-secret')).toBe('94.46.172.101');
+    expect(clientIp(req, 'edge-secret')).toBe('198.51.100.10');
   });
 
   it('falls back when nothing identifies the caller', () => {
