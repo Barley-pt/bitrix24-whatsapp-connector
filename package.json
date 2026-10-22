@@ -11,8 +11,8 @@
     "ui:build": "vite build --config ui/vite.config.ts",
     "ui:dev": "vite --config ui/vite.config.ts",
     "build": "npm run ui:build",
-    "db:local": "wrangler d1 execute acpzap --local --file=./schema.sql",
-    "db:remote": "wrangler d1 execute acpzap --remote --file=./schema.sql"
+    "db:local": "wrangler d1 execute bitrix_whatsapp --local --file=./schema.sql",
+    "db:remote": "wrangler d1 execute bitrix_whatsapp --remote --file=./schema.sql"
   },
   "dependencies": {
     "hono": "^4.6.14"

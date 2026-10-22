@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS chat_map (
   -- CONNECTOR+LINE+CHAT_ID, and the value is also baked into the CRM contact's IM identifier
   -- (`imol|whatsapp_connector|<line>|<chat_id>|<user>`, see bitrix_line_id below). Passing the raw,
   -- jid-of-the-moment remoteJid instead is what split one customer across two Bitrix chats when
-  -- their jid flipped: acp line 2 chats 5398 (phone jid) + 5400 (LID), customer line 3 chats
+  -- their jid flipped: line 2 chats 5398 (phone jid) + 5400 (LID), line 3 chats
   -- 160777 + 160779 created 3 minutes apart mid-conversation. A brand-new contact gets
   -- inbound.ts's canonicalChatId (`<digits>@s.whatsapp.net`), the same id crm.ts's click-to-chat
   -- uses, so both entry points agree.

@@ -214,7 +214,7 @@ any integration should read rather than assuming a fixed product name.
 
 ```bash
 npm install
-cp .dev.vars.example .dev.vars   # fill in the three secrets
+cp .dev.vars.example .dev.vars   # fill in the placeholder secrets
 npm run ui:build                 # required: the Worker serves public/index.html
 npm run db:local
 npx wrangler dev

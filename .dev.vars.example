@@ -1,0 +1,24 @@
+# Copy to .dev.vars (git-ignored) for `wrangler dev`. Never commit the real values.
+
+# Bitrix24 app credentials (partner account -> application -> version).
+BITRIX_CLIENT_SECRET="local.xxxxxxxxxxxxxxxx"
+
+# Signs the short-lived SPA session token. Any high-entropy string: openssl rand -hex 32
+APP_SECRET="change-me"
+
+# AES-256-GCM key for tokens at rest. Must be base64 of exactly 32 bytes:
+#   openssl rand -base64 32
+TOKEN_ENC_KEY="change-me"
+
+# Optional. Shared with the reverse proxy so the Worker can trust X-Real-Client-IP and can
+# verify the X-Edge-Auth header the proxy stamps. Must match the nginx site config's value
+# (openssl rand -hex 32). Leave unset when no proxy fronts the Worker: the edge gate is then
+# skipped and every route still enforces its own auth (see src/middleware/edgeAuth.ts).
+# EDGE_SECRET="change-me"
+
+# Phase 2: the operator's master WasenderAPI personal access token (central provisioning).
+WASENDER_MASTER_TOKEN=""
+
+# Phase 5: gates /admin/* (binding a license key to a portal). Any high-entropy string:
+# openssl rand -hex 32
+ADMIN_SECRET="change-me"
