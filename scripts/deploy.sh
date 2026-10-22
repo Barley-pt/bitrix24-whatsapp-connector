@@ -18,7 +18,6 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_DIR"
 
 BRANCH="main"
-HEALTH_URL="https://YOUR_DOMAIN/health"
 
 MIGRATE=0
 SKIP_PULL=0
@@ -43,12 +42,15 @@ die() {
   exit 1
 }
 
-[ -f .deploy.env ] || die ".deploy.env is missing. See .deploy.env.example, or run bootstrap.sh."
+[ -f .deploy.env ] || die ".deploy.env is missing. Run \`npm run setup\` (writes it), or copy the values from a teammate's setup."
 # shellcheck disable=SC1091
 set -a
 . ./.deploy.env
 set +a
 [ -n "${CLOUDFLARE_API_TOKEN:-}" ] || die "CLOUDFLARE_API_TOKEN is empty in .deploy.env"
+
+# PUBLIC_URL is written by npm run setup; the fallback keeps a hand-written .deploy.env usable.
+HEALTH_URL="${PUBLIC_URL:-https://YOUR_DOMAIN}/health"
 
 # --- 1. source ------------------------------------------------------------------------------
 if [ "$SKIP_PULL" -eq 1 ]; then
