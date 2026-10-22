@@ -106,6 +106,13 @@
     // this is true.
     "LICENSE_ENFORCE": "false",
 
+    // White-label branding (src/brand.ts). Only honored on a license whose envelope carries
+    // features.white_label=true; otherwise the free-tier "Powered by ACP GROUP" attribution is
+    // shown. Empty strings mean "fall back to CONNECTOR_NAME / 'WhatsApp Audio' / no link".
+    "BRAND_CONNECTOR_NAME": "",
+    "BRAND_BOT_NAME": "",
+    "BRAND_SUPPORT_URL": "",
+
     "WASENDER_BASE_URL": "https://wasenderapi.com"
   },
 

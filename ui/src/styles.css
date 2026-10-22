@@ -4,13 +4,13 @@
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
 @theme {
-  /* ACP brand accent. Single accent for the whole panel: every primary action uses it and
-     nothing else does. Sourced from acp-site/favicon.svg. */
-  --color-acp-50: #fff2ed;
-  --color-acp-100: #ffe0d3;
-  --color-acp-500: #ff3c00;
-  --color-acp-600: #e03000;
-  --color-acp-700: #b82800;
+  /* Brand accent. Single accent for the whole panel: every primary action uses it and
+     nothing else does. */
+  --color-brand-50: #fff2ed;
+  --color-brand-100: #ffe0d3;
+  --color-brand-500: #ff3c00;
+  --color-brand-600: #e03000;
+  --color-brand-700: #b82800;
 
   /* Connection state only. Not a second brand colour. */
   --color-live-500: #25d366;

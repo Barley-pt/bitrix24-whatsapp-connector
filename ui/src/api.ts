@@ -43,10 +43,20 @@ export interface CrmPlacement {
   entityTypeId?: number;
 }
 
+/** Worker-side branding (src/brand.ts). poweredBy null = white-label, render no attribution. */
+export interface Branding {
+  poweredBy: string | null;
+  connectorName: string;
+  botName: string;
+  supportUrl: string | null;
+}
+
 export interface Bootstrap {
   session: string;
   view: 'setup' | 'connector-settings' | 'crm-tab';
   appVersion: string;
+  /** Free-tier attribution, or a white-label branding block with poweredBy null. */
+  branding?: Branding | null;
   /**
    * Which Open Line the connector-settings widget is configuring, or which CRM entity the
    * click-to-chat tab is open on. Null outside the matching placement.

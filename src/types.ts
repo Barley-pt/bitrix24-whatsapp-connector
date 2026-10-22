@@ -104,6 +104,13 @@ export interface Env {
   LICENSE_ENFORCE: string;
   WASENDER_BASE_URL: string;
 
+  // White-label branding overrides (src/brand.ts). Empty/absent falls back to CONNECTOR_NAME /
+  // 'WhatsApp Audio' / no support link; they only take effect on a license whose features carry
+  // white_label=true (otherwise the free-tier attribution wins regardless).
+  BRAND_CONNECTOR_NAME?: string;
+  BRAND_BOT_NAME?: string;
+  BRAND_SUPPORT_URL?: string;
+
   // secrets
   BITRIX_CLIENT_SECRET: string;
   APP_SECRET: string;

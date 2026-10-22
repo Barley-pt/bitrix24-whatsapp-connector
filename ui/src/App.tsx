@@ -72,9 +72,9 @@ function SetupApp({ boot }: { boot: Bootstrap | null }) {
       <header className="flex flex-wrap items-center gap-4">
         <span
           aria-hidden
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-card bg-acp-500 text-lg font-semibold text-white"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-card bg-brand-500 text-lg font-semibold text-white"
         >
-          Z
+          W
         </span>
 
         <div className="min-w-0 flex-1">
@@ -94,7 +94,7 @@ function SetupApp({ boot }: { boot: Bootstrap | null }) {
           type="button"
           onClick={toggleTheme}
           aria-label={theme === 'dark' ? t('app.theme.toLight') : t('app.theme.toDark')}
-          className="grid h-9 w-9 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-600 transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-acp-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+          className="grid h-9 w-9 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-600 transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
         >
           {theme === 'dark' ? <SunIcon size={17} /> : <MoonIcon size={17} />}
         </button>
@@ -156,7 +156,7 @@ function SetupApp({ boot }: { boot: Bootstrap | null }) {
                       ? t('app.planAllowsNumbers', { n: state.license.maxNumbers ?? 0 })
                       : undefined
                   }
-                  className="inline-flex items-center gap-2 rounded-full bg-acp-500 px-4 py-2 text-sm font-medium text-white transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-600 disabled:active:scale-100 dark:disabled:bg-zinc-700 dark:disabled:text-zinc-400"
+                  className="inline-flex items-center gap-2 rounded-full bg-brand-500 px-4 py-2 text-sm font-medium text-white transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-600 disabled:active:scale-100 dark:disabled:bg-zinc-700 dark:disabled:text-zinc-400"
                 >
                   <PlusIcon size={16} weight="bold" />
                   {t('app.addNumber')}
@@ -196,6 +196,20 @@ function SetupApp({ boot }: { boot: Bootstrap | null }) {
           <PortalCard portal={state.portal} license={state.license} />
         </>
       )}
+
+      {/* Free-tier attribution only - resolveBranding (src/brand.ts) returns poweredBy null for
+          white-label deployments, in which case nothing is rendered here. */}
+      {boot?.branding?.poweredBy && (
+        <footer className="pt-1 text-center text-xs text-zinc-400 dark:text-zinc-500">
+          {boot.branding.supportUrl ? (
+            <a href={boot.branding.supportUrl} target="_blank" rel="noopener noreferrer">
+              Powered by {boot.branding.poweredBy}
+            </a>
+          ) : (
+            <span>Powered by {boot.branding.poweredBy}</span>
+          )}
+        </footer>
+      )}
     </div>
   );
 }
@@ -218,8 +232,8 @@ function LanguageSwitcher() {
           onClick={() => setLocale('en')}
           className={
             locale === 'en'
-              ? 'h-8 min-w-[2.25rem] rounded-full bg-acp-500 px-2.5 text-xs font-semibold text-white'
-              : 'h-8 min-w-[2.25rem] rounded-full px-2.5 text-xs font-semibold text-zinc-600 transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-acp-500 dark:text-zinc-300 dark:hover:bg-zinc-700'
+              ? 'h-8 min-w-[2.25rem] rounded-full bg-brand-500 px-2.5 text-xs font-semibold text-white'
+              : 'h-8 min-w-[2.25rem] rounded-full px-2.5 text-xs font-semibold text-zinc-600 transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:text-zinc-300 dark:hover:bg-zinc-700'
           }
         >
           {t('app.language.en')}
@@ -230,8 +244,8 @@ function LanguageSwitcher() {
           onClick={() => setLocale('pt-BR')}
           className={
             locale === 'pt-BR'
-              ? 'h-8 min-w-[2.25rem] rounded-full bg-acp-500 px-2.5 text-xs font-semibold text-white'
-              : 'h-8 min-w-[2.25rem] rounded-full px-2.5 text-xs font-semibold text-zinc-600 transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-acp-500 dark:text-zinc-300 dark:hover:bg-zinc-700'
+              ? 'h-8 min-w-[2.25rem] rounded-full bg-brand-500 px-2.5 text-xs font-semibold text-white'
+              : 'h-8 min-w-[2.25rem] rounded-full px-2.5 text-xs font-semibold text-zinc-600 transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:text-zinc-300 dark:hover:bg-zinc-700'
           }
         >
           {t('app.language.pt')}

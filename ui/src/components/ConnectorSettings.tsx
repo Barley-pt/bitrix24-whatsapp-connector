@@ -165,7 +165,7 @@ export function ConnectorSettings({ boot }: { boot: Bootstrap }) {
         type="button"
         onClick={save}
         disabled={!selected || saving || saved}
-        className="inline-flex items-center justify-center gap-2 rounded-full bg-acp-500 px-4 py-2 text-sm font-medium text-white transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-600 dark:disabled:bg-zinc-700 dark:disabled:text-zinc-400"
+        className="inline-flex items-center justify-center gap-2 rounded-full bg-brand-500 px-4 py-2 text-sm font-medium text-white transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-600 dark:disabled:bg-zinc-700 dark:disabled:text-zinc-400"
       >
         {saved ? t('common.saved') : saving ? t('common.saving') : t('common.save')}
       </button>

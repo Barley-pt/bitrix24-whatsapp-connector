@@ -1,4 +1,6 @@
+import { brandingForPortal } from './brand';
 import type { CrmEntityType } from './crm';
+import { getPortalByMemberId } from './db';
 import { issueSession } from './session';
 import type { Env } from './types';
 
@@ -26,7 +28,11 @@ export async function renderApp(
   }
 
   const session = await issueSession(env, memberId);
-  const bootstrap = JSON.stringify({ session, view, appVersion: env.APP_VERSION, placement });
+  // Branding rides the bootstrap so the SPA can render (or omit) the powered-by footer before
+  // its first /api/state response lands - see src/brand.ts.
+  const portal = await getPortalByMemberId(env, memberId);
+  const branding = await brandingForPortal(env, portal);
+  const bootstrap = JSON.stringify({ session, view, appVersion: env.APP_VERSION, placement, branding });
 
   // The placeholder sits in the HTML as a quoted string so the bundle stays valid JS before
   // substitution; swapping it including its quotes turns it into an object literal.

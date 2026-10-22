@@ -1,4 +1,5 @@
 import { callMethod, BitrixError } from './bitrix';
+import { resolveBranding, whiteLabelOf } from './brand';
 import { setConnectorVersion, updatePortalBotId } from './db';
 import { isEnforced, snapshot } from './license';
 import { listSessions } from './sessions';
@@ -59,13 +60,17 @@ export async function ensureConnectorRegistered(
   const target = Number(env.CONNECTOR_VERSION);
   if (!force && portal.connector_version === target) return false;
 
-  // Group messaging (CHAT_GROUP: true) requires the license feature group_conversations.
-  const lic = isEnforced(env) ? await snapshot(env, portal).catch(() => null) : null;
-  const chatGroup = lic?.features?.group_conversations === true;
+  // One snapshot feeds both gates: group messaging (CHAT_GROUP: true) requires the license
+  // feature group_conversations, and the connector/bot display names come from resolveBranding
+  // when the license carries white_label (src/brand.ts). Registration is rare (version bump or
+  // install), so the extra read is off any hot path.
+  const lic = await snapshot(env, portal).catch(() => null);
+  const chatGroup = isEnforced(env) && lic?.features?.group_conversations === true;
+  const branding = resolveBranding(env, whiteLabelOf(lic));
 
   await callMethod(env, portal, 'imconnector.register', {
     ID: env.CONNECTOR_ID,
-    NAME: env.CONNECTOR_NAME,
+    NAME: branding.connectorName,
     ICON: {
       DATA_IMAGE: dataUri(GLYPH),
       COLOR: '#25D366',
@@ -92,7 +97,7 @@ export async function ensureConnectorRegistered(
   }
   await bindDynamicCrmTabPlacements(env, portal);
   await bindAudioRecorder(env, portal);
-  await registerAudioBot(env, portal);
+  await registerAudioBot(env, portal, branding.botName);
 
   await setConnectorVersion(env, portal.id, target);
   return true;
@@ -301,7 +306,7 @@ function bindAudioRecorder(env: Env, portal: PortalRow): Promise<void> {
  * Register the audio-notification chatbot (posted after a voice note is sent from the widget).
  * Idempotent -- re-calling with the same code returns the existing bot.
  */
-async function registerAudioBot(env: Env, portal: PortalRow): Promise<void> {
+async function registerAudioBot(env: Env, portal: PortalRow, botName: string): Promise<void> {
   const result = await callMethod<{ bot: { id: number } }>(env, portal, 'imbot.v2.Bot.register', {
     fields: {
       code: 'wa_audio_bot',
@@ -309,7 +314,7 @@ async function registerAudioBot(env: Env, portal: PortalRow): Promise<void> {
       isSupportOpenline: true,
       eventMode: 'webhook',
       webhookUrl: `${env.PUBLIC_URL}/bot/audio`,
-      properties: { name: 'WhatsApp Audio', workPosition: 'WhatsApp Audio', color: 'green' },
+      properties: { name: botName, workPosition: 'WhatsApp Audio', color: 'green' },
     },
   });
   if (result?.bot?.id) {

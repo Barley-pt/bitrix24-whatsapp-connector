@@ -1,4 +1,5 @@
 import { type Context, Hono } from 'hono';
+import { resolveBranding, whiteLabelOf } from '../brand';
 import { activateConnector } from '../connector';
 import {
   findChatMatches,
@@ -73,6 +74,9 @@ async function licenseFor(c: { env: Env }, portal: PortalRow) {
     tier: snap.tier,
     status: snap.status,
     licensed: snap.licensed,
+    // Drives resolveBranding (src/brand.ts): only an active license carrying the white_label
+    // feature removes the free-tier attribution.
+    whiteLabel: whiteLabelOf(snap),
     expiresAt: snap.expiresAt,
     maxNumbers: typeof f.max_numbers === 'number' ? f.max_numbers : null,
     maxConversationsPerMonth: typeof f.max_conversations_per_month === 'number' ? f.max_conversations_per_month : null,
@@ -110,6 +114,9 @@ apiRoutes.get('/api/state', async (c) => {
   ]);
 
   return c.json({
+    // Same object the SPA reads off its bootstrap (app-shell.ts) and the widget renders as its
+    // powered-by footer - one resolution path, three surfaces.
+    branding: resolveBranding(c.env, licenseSummary.whiteLabel),
     portal: {
       domain: portal.bitrix_domain,
       installedAt: portal.installed_at,

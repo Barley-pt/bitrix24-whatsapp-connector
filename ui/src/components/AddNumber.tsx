@@ -28,7 +28,7 @@ export function AddNumber({ onCreated, onCancel }: Props) {
   }
 
   const field =
-    'w-full rounded-field border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-500 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-acp-500 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-400';
+    'w-full rounded-field border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-500 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-500 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-400';
 
   return (
     <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
@@ -80,7 +80,7 @@ export function AddNumber({ onCreated, onCancel }: Props) {
         <button
           type="submit"
           disabled={busy}
-          className="rounded-full bg-acp-500 px-4 py-2 text-sm font-medium text-white transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-600 dark:disabled:bg-zinc-700 dark:disabled:text-zinc-400"
+          className="rounded-full bg-brand-500 px-4 py-2 text-sm font-medium text-white transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-600 dark:disabled:bg-zinc-700 dark:disabled:text-zinc-400"
         >
           {busy ? t('add.creating') : t('add.create')}
         </button>

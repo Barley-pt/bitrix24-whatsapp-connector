@@ -37,12 +37,12 @@ export function LicenseActivation({ onActivated }: { onActivated: () => void }) 
           placeholder="ACP-XXXX-XXXX-XXXX-XXXX"
           required
           autoCapitalize="characters"
-          className="w-full flex-1 rounded-field border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-500 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-acp-500 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-400"
+          className="w-full flex-1 rounded-field border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-500 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-500 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-400"
         />
         <button
           type="submit"
           disabled={busy}
-          className="shrink-0 rounded-full bg-acp-500 px-4 py-2 text-sm font-medium text-white transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-600 dark:disabled:bg-zinc-700 dark:disabled:text-zinc-400"
+          className="shrink-0 rounded-full bg-brand-500 px-4 py-2 text-sm font-medium text-white transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-600 dark:disabled:bg-zinc-700 dark:disabled:text-zinc-400"
         >
           {busy ? t('license.activating') : t('license.activate')}
         </button>

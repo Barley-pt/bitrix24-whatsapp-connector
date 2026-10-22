@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { callMethod } from '../bitrix';
-import { getPortalById } from '../db';
+import { brandingForPortal } from '../brand';
+import { getPortalById, getPortalByDomain } from '../db';
 import { deleteAudioStaging, uploadAudioStaging } from '../media';
 import { sessionApiKey } from '../sessions';
 import type { Env, PortalRow, SessionRow } from '../types';
@@ -50,6 +51,9 @@ button.send{background:#3498db;box-shadow:0 1px 3px rgba(52,152,219,.35)}
 .status{flex-basis:100%;font-size:12px;color:#6a737d;text-align:center;line-height:1.3}
 .status:empty{display:none}
 .hidden{display:none!important}
+.branding{width:100%;padding-top:2px;font-size:10px;line-height:1.3;color:#8a919a;text-align:center}
+.branding a{color:inherit;text-decoration:none}
+.branding a:hover{text-decoration:underline}
 </style>
 </head>
 <body>
@@ -71,6 +75,7 @@ button.send{background:#3498db;box-shadow:0 1px 3px rgba(52,152,219,.35)}
     <div class="status" id="status"></div>
   </div>
 </div>
+<!--BRANDING-->
 <script>
 var dialogId = '', audioToken = '';
 var recorder = null, stream = null, audioChunks = [], recMime = '', tickInterval = null;
@@ -223,6 +228,24 @@ function sendAudio(){
 </html>`;
 
 /**
+ * Powered-by footer for the widget (src/brand.ts): empty string on white-label deployments,
+ * "Powered by <name>" (linked when a support URL is configured) on the free tier. The portal is
+ * looked up from the DOMAIN query param so the footer follows that portal's license.
+ */
+async function poweredByFooter(env: Env, domain: string): Promise<string> {
+  const portal = await getPortalByDomain(env, domain);
+  const branding = await brandingForPortal(env, portal);
+  if (!branding.poweredBy) return '';
+  const esc = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const label = `Powered by ${esc(branding.poweredBy)}`;
+  const inner = branding.supportUrl
+    ? `<a href="${esc(branding.supportUrl)}" target="_blank" rel="noopener noreferrer">${label}</a>`
+    : label;
+  return `<div class="branding">${inner}</div>`;
+}
+
+/**
  * Generate a signed one-time token tied to a specific dialogId,
  * so POST /widget/send-audio can verify the request came from a widget
  * we served for that chat.
@@ -268,10 +291,9 @@ widgetRoutes.get('/widget/audio-record', async (c) => {
   const page = WIDGET_HTML.replace(
     "dialogId = ''",
     `dialogId = '${dialogId.replace(/'/g, "\\'")}'`,
-  ).replace(
-    "audioToken = ''",
-    `audioToken = '${token}'`,
-  );
+  )
+    .replace("audioToken = ''", `audioToken = '${token}'`)
+    .replace('<!--BRANDING-->', await poweredByFooter(c.env, domain));
 
   return new Response(page, {
     status: 200,
@@ -300,10 +322,9 @@ widgetRoutes.post('/widget/audio-record', async (c) => {
   const page = WIDGET_HTML.replace(
     "dialogId = ''",
     `dialogId = '${dialogId.replace(/'/g, "\\'")}'`,
-  ).replace(
-    "audioToken = ''",
-    `audioToken = '${token}'`,
-  );
+  )
+    .replace("audioToken = ''", `audioToken = '${token}'`)
+    .replace('<!--BRANDING-->', await poweredByFooter(c.env, domain));
 
   return new Response(page, {
     status: 200,
