@@ -154,7 +154,7 @@ ui/                 React SPA, built to public/index.html
 schema.sql          D1 schema (single source of truth, also used by tests)
 test/               vitest running in workerd
 docs/               distilled WasenderAPI contract notes (docs/wasenderapi.md)
-scripts/            bootstrap.sh (first run) and deploy.sh (every deploy after)
+scripts/            setup.mjs (first-run wizard, `npm run setup`) and deploy.sh (every deploy after)
 deploy/nginx/       nginx site template (deploy/nginx/connector.conf)
 ```
 
@@ -238,20 +238,38 @@ Two known local-toolchain notes: the installed workerd is older than the configu
 resolves the real date); and `@cloudflare/vitest-pool-workers` is sensitive to the Node major
 version, so use Node 20 or 22 if the pool fails to start.
 
-## Deploy
-
-Full runbook in [DEPLOY.md](DEPLOY.md). Never deployed yet, so the first run is a bring-up.
+## Quickstart
 
 ```bash
-cd /opt/connector && ./scripts/bootstrap.sh   # once: D1, secrets, first deploy
-cd /opt/connector && ./scripts/deploy.sh      # every time after that
+npm install
+npm run setup
+```
+
+One interactive wizard takes a fresh clone all the way to a deployed, healthy Worker: Cloudflare
+preflight (Node 20+, `wrangler whoami`), D1 / R2 / queue creation, cryptographically generated
+secrets (`APP_SECRET`, `TOKEN_ENC_KEY`, `ADMIN_SECRET`), `wrangler.jsonc` patched with your
+account id, public URL, D1 database id and `BITRIX_CLIENT_ID` (with a printed diff), schema
+apply, first deploy, health check - and finally the three Bitrix24 Market URL fields to paste.
+
+Every value is also a flag or env var (`npm run setup -- --help`), so it is scriptable
+(`--yes`, or `--non-interactive` with env vars). It is idempotent: re-running after a partial
+failure is the normal recovery - existing resources are detected, secrets already in
+`.deploy.env` are reused (regenerating `TOKEN_ENC_KEY` would make stored tokens unrecoverable).
+
+Deploys after the first one:
+
+```bash
+./scripts/deploy.sh
 ```
 
 `public/` is git-ignored and built on the deploy host, so `npm run ui:build` has to run before
-`wrangler deploy` or the Worker has no `index.html` to serve. Both scripts do this.
+`wrangler deploy` or the Worker has no `index.html` to serve - both `setup` and `deploy.sh` do
+it. The wizard commits nothing: push the patched `wrangler.jsonc`, or the next
+`deploy.sh` (`git reset --hard origin/main`) reverts it and the deploy that follows fails on
+the placeholder ids.
 
-`BITRIX_CLIENT_ID` and the D1 `database_id` in `wrangler.jsonc` are placeholders and must be
-committed before the app works. `bootstrap.sh` stops and tells you when either is outstanding.
+Full runbook - nginx/TLS, schema migrations, the queues/DLQ gotcha, rollback and
+troubleshooting - in [DEPLOY.md](DEPLOY.md).
 
 ### Bitrix24 app registration
 
