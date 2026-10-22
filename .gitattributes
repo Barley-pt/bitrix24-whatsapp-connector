@@ -1,0 +1,8 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# These are executed on the Linux deploy host. A CRLF shebang fails with
+# "bad interpreter: /usr/bin/env bash^M", so pin LF in the working copy too, not just in the repo.
+*.sh text eol=lf
+*.conf text eol=lf
+schema.sql text eol=lf

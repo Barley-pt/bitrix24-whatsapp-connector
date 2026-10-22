@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WhatsApp Connector</title>
+    <script>
+      // Replaced server-side by app-shell.ts. Falls back to an unauthenticated shell in dev.
+      window.__ACPZAP__ = "__ACPZAP_BOOTSTRAP__";
+    </script>
+    <!-- Only exercised by the connector-settings view (closing the placement widget), but
+         harmless to load unconditionally rather than branching the shell on view. -->
+    <script src="//api.bitrix24.com/api/v1/"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

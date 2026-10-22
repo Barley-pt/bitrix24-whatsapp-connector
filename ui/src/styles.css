@@ -1,0 +1,64 @@
+@import 'tailwindcss';
+
+/* Manual toggle wins over the system preference; main.tsx stamps data-theme on <html>. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+@theme {
+  /* ACP brand accent. Single accent for the whole panel: every primary action uses it and
+     nothing else does. Sourced from acp-site/favicon.svg. */
+  --color-acp-50: #fff2ed;
+  --color-acp-100: #ffe0d3;
+  --color-acp-500: #ff3c00;
+  --color-acp-600: #e03000;
+  --color-acp-700: #b82800;
+
+  /* Connection state only. Not a second brand colour. */
+  --color-live-500: #25d366;
+  --color-live-600: #128c4a;
+
+  /* The QR panel's connected checkmark. */
+  --animate-scale-in: scale-in 0.3s ease-out;
+  @keyframes scale-in {
+    from {
+      opacity: 0;
+      transform: scale(0.4);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  --radius-card: 1rem; /* cards and panels */
+  --radius-field: 0.625rem; /* inputs and selects */
+  /* buttons are fully rounded (rounded-full); those three are the entire radius system */
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  /* Light is the default because the Bitrix24 shell around this iframe is light. */
+  background: #f7f7f8;
+  color: #18181b;
+}
+
+[data-theme='dark'] body {
+  background: #17181c;
+  color: #f4f4f5;
+}
+
+/* Honour reduced motion for the few transitions used here. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

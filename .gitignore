@@ -1,0 +1,18 @@
+node_modules/
+public/
+.wrangler/
+.dev.vars
+.deploy.env
+dist/
+*.log
+.DS_Store
+.dev.vars.example
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+graft/
+logs-2026-08-10T20_41_14.513Z.json
+
+# Browser network captures used for diagnosing the Open Lines flow. These embed a live AUTH_ID and
+# sessid for whoever recorded them - portal-takeover material, never commit one.
+*.har
+2026-08-11_17-17.png

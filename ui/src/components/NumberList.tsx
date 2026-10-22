@@ -1,0 +1,88 @@
+import { CheckCircleIcon, QrCodeIcon, WarningCircleIcon } from '@phosphor-icons/react';
+import type { WhatsAppSession } from '../api';
+import { useT } from '../i18n';
+
+/** Wasender's own vocabulary, mapped to operator-facing wording rather than remapped upstream. */
+const STATUS_CLASS: Record<WhatsAppSession['status'], string> = {
+  connected: 'text-live-600 dark:text-live-500',
+  need_scan: 'text-amber-600 dark:text-amber-400',
+  connecting: 'text-amber-600 dark:text-amber-400',
+  disconnected: 'text-zinc-500 dark:text-zinc-400',
+  logged_out: 'text-red-600 dark:text-red-400',
+  expired: 'text-red-600 dark:text-red-400',
+};
+
+const FALLBACK_CLASS = 'text-zinc-500 dark:text-zinc-400';
+
+const STATUS_KEY: Record<WhatsAppSession['status'], 'status.connected' | 'status.need_scan' | 'status.connecting' | 'status.disconnected' | 'status.logged_out' | 'status.expired'> = {
+  connected: 'status.connected',
+  need_scan: 'status.need_scan',
+  connecting: 'status.connecting',
+  disconnected: 'status.disconnected',
+  logged_out: 'status.logged_out',
+  expired: 'status.expired',
+};
+
+function StatusIcon({ status }: { status: WhatsAppSession['status'] }) {
+  if (status === 'connected') return <CheckCircleIcon size={18} weight="fill" />;
+  if (status === 'need_scan' || status === 'connecting') return <QrCodeIcon size={18} />;
+  return <WarningCircleIcon size={18} />;
+}
+
+interface Props {
+  sessions: WhatsAppSession[];
+  onReconnect: (sessionId: string) => void;
+}
+
+export function NumberList({ sessions, onReconnect }: Props) {
+  const t = useT();
+  if (sessions.length === 0) {
+    return (
+      <div className="rounded-card border border-dashed border-zinc-300 px-5 py-8 text-center dark:border-zinc-700">
+        <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+          {t('numbers.emptyTitle')}
+        </p>
+        <p className="mx-auto mt-1 max-w-sm text-sm text-zinc-500 dark:text-zinc-400">
+          {t('numbers.emptyBody')}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <ul className="divide-y divide-zinc-200 dark:divide-zinc-700">
+      {sessions.map((session) => {
+        const statusKey = STATUS_KEY[session.status];
+        const className = STATUS_CLASS[session.status] ?? FALLBACK_CLASS;
+        const label = statusKey ? t(statusKey) : t('status.unknown');
+        return (
+          <li key={session.id} className="flex items-center gap-3 py-3">
+            <span className={className} aria-hidden>
+              <StatusIcon status={session.status} />
+            </span>
+
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                {session.phone_number ?? t('common.numberPending')}
+              </p>
+              <p className={`truncate text-xs ${className}`}>
+                {label}
+                {session.bitrix_line_id ? ` · ${t('status.openLine', { id: session.bitrix_line_id })}` : ''}
+              </p>
+            </div>
+
+            {session.status !== 'connected' && (
+              <button
+                type="button"
+                onClick={() => onReconnect(session.id)}
+                className="shrink-0 rounded-full border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                {t('numbers.reconnect')}
+              </button>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
