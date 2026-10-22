@@ -43,7 +43,7 @@ export interface InboundNoteQueueMessage {
   eventId: string;
   /**
    * The chat the event belongs to, as Wasender sent it - either a real jid or, on
-   * reaction/delete payloads, a bare "+1234567890" (wasenderapi-api-docs.md). Resolved against
+   * reaction/delete payloads, a bare "+1234567890" (the Wasender API docs). Resolved against
    * chat_map's wa_jid or wa_phone.
    */
   remoteJid: string;

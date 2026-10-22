@@ -19,7 +19,7 @@ interface WasenderWebhookBody {
   event?: string;
   timestamp?: number;
   // messages.received and messages-group.received deliver `messages` as a single object;
-  // messages.upsert delivers it as an array (wasenderapi-api-docs.md, Webhook: Message Upsert /
+  // messages.upsert delivers it as an array (the Wasender API docs, Webhook: Message Upsert /
   // Message Received / Group Message Received). Both shapes are normalized below.
   data?: { messages?: InboundMessage | InboundMessage[] };
 }
@@ -32,7 +32,7 @@ interface EventKey {
 }
 
 /**
- * Payload shapes for the non-message events, per wasenderapi-api-docs.md. Every field is optional:
+ * Payload shapes for the non-message events, per the Wasender API docs. Every field is optional:
  * these are only documented by example, so anything missing is skipped rather than trusted.
  */
 interface CallData {

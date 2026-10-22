@@ -9,7 +9,7 @@ import { b64urlDecode, b64urlEncode, hmacSign, hmacVerify, nowSec, uuid } from '
  * Public, short-lived proxy for one Bitrix attachment, so WasenderAPI can fetch it.
  *
  * Wasender's media sends take a URL, never bytes ("Provide the image via a publicly accessible
- * URL", wasenderapi-api-docs.md) and fetch it server-side while processing the send. A Bitrix
+ * URL", the Wasender API docs) and fetch it server-side while processing the send. A Bitrix
  * attachment link cannot simply be forwarded: ONIMCONNECTORMESSAGEADD delivers it portal-relative
  * on some payloads, and whatever `auth` signature it carries is Bitrix's, with no documented
  * lifetime we can rely on outliving a queued send. So the link is wrapped in a token signed with

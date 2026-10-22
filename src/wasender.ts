@@ -1,7 +1,8 @@
 import type { Env } from './types';
 
 /**
- * WasenderAPI client. See docs/wasenderapi.md for how this contract was verified.
+ * WasenderAPI client. See docs/wasenderapi.md for how this contract was verified (published
+ * reference: https://wasenderapi.com/api-docs).
  *
  * Two token types that look identical on the wire:
  *   - the Personal Access Token manages sessions (create, list, connect, delete)
@@ -74,14 +75,14 @@ export class WasenderError extends Error {
  * would not avoid needing the same echo match. See docs/wasenderapi.md.
  *
  * `messages-group.received` is a separate event from `messages.received` - group traffic is not
- * folded into it (wasenderapi-api-docs.md, "Webhook: Group Message Received"). Always subscribed
+ * folded into it (the Wasender API docs, "Webhook: Group Message Received"). Always subscribed
  * regardless of a session's own group_messages_enabled: `ignore_groups` (createSession/
  * updateSession) is what actually gates delivery, so the subscription is inert on a session that
  * has groups turned off and needs no separate sync when a session later turns them on.
  *
  * `messages-personal.received` duplicates `messages.received` for 1:1 chats; it is subscribed but
  * acknowledged without enqueueing (routes/webhook.ts explains why). `message.sent` (singular - Wasender's own name, see
- * wasenderapi-api-docs.md "Webhook: Message Sent") is only used to log a send failure;
+ * the Wasender API docs, "Webhook: Message Sent") is only used to log a send failure;
  * `call`/`messages.reaction`/`messages.delete` become system notes in the Open Line and
  * `qrcode.updated` is mirrored onto the session row (all in routes/webhook.ts).
  */
@@ -297,7 +298,7 @@ export class WasenderClient {
   /**
    * Send one attachment, optionally with a caption. Same endpoint and same response shape as
    * sendText - the only difference is which `<kind>Url` parameter carries the file
-   * (wasenderapi-api-docs.md, "Send Image/Video/Audio/Document Message").
+   * (the Wasender API docs, "Send Image/Video/Audio/Document Message").
    *
    * The URL must be publicly fetchable: Wasender downloads it server-side while processing the
    * send, which is what src/media.ts exists to provide for a Bitrix attachment.
@@ -344,7 +345,7 @@ export class WasenderClient {
   /**
    * Contact detail lookup, used so a new Open Line contact gets a real display name instead of
    * Bitrix's own "Guest" fallback (imconnector.send.messages never received a user.name before
-   * this existed). Shape confirmed against wasenderapi-api-docs.md (repo root): `{success, data:
+   * this existed). Shape confirmed against the Wasender API docs: `{success, data:
    * {id, name, notify, verifiedName, imgUrl, status}}` - the same envelope `call()` already
    * unwraps. `name` is the sender's own WhatsApp address-book entry (rarely set), `notify` is the
    * pushName the account broadcasts (the common case), `verifiedName` only appears for verified
@@ -360,7 +361,7 @@ export class WasenderClient {
 
   /**
    * Profile picture URL from the dedicated endpoint: GET /api/contacts/{phone}/picture answers
-   * `{success, data: {imgUrl}}` (wasenderapi-api-docs.md, "Get Contact Profile Picture").
+   * `{success, data: {imgUrl}}` (the Wasender API docs, "Get Contact Profile Picture").
    * getContactInfo's own imgUrl is documented as frequently null - its example returns
    * `"imgUrl": null` - even when the contact does have a picture, so this is the fallback
    * inbound.ts uses for the Bitrix avatar. Undefined when the contact has no picture or the call
@@ -382,7 +383,7 @@ export class WasenderClient {
    * Group counterpart to getContactInfo: `subject` is the group's own display name, used the
    * same way - so a new Open Line chat for a group shows its real name instead of Bitrix's
    * "Guest" fallback (inbound.ts's resolveContactName). Shape confirmed against
-   * wasenderapi-api-docs.md, "Get Group Metadata".
+   * the Wasender API docs, "Get Group Metadata".
    */
   async getGroupMetadata(apiKey: string, groupJid: string): Promise<GroupMetadata> {
     const { data } = await this.call<GroupMetadata>(
@@ -399,7 +400,7 @@ export interface ContactInfo {
   verifiedName?: string | null;
   /**
    * WhatsApp profile picture URL, passed to Bitrix as the contact's avatar (inbound.ts,
-   * user.picture). Documented as nullable (wasenderapi-api-docs.md, "Get Contact Info" example
+   * user.picture). Documented as nullable (the Wasender API docs, "Get Contact Info" example
    * returns `"imgUrl": null`) - a contact whose privacy settings hide the picture has none.
    */
   imgUrl?: string | null;

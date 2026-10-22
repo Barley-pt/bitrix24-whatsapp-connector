@@ -136,7 +136,7 @@ const messagesUpsert = (fromMe: boolean, overrides: Record<string, unknown> = {}
 });
 
 /**
- * The shape Wasender actually sends for messages.upsert per wasenderapi-api-docs.md:
+ * The shape Wasender actually sends for messages.upsert per the Wasender API docs:
  * `data.messages` is an **array** (messages.received delivers a single object instead).
  */
 const messagesUpsertArray = (...messages: Array<Record<string, unknown>>) => ({

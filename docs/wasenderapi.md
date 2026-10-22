@@ -180,9 +180,9 @@ reimplementing the HKDF unwrapping.
 `messageBody` is the message's own text only; what it was *answering* rides `contextInfo` on the
 envelope carrying the message (`extendedTextMessage.contextInfo`, `imageMessage.contextInfo`, …,
 sometimes one wrapper level down under `ephemeralMessage.message`). Wasender's docs never show
-this block for an inbound delivery — the only example in `wasenderapi-api-docs.md` is the
-`GET /api/messages/{msgId}/info` response — so its live shape on inbound traffic is **unverified**
-here. `src/inbound.ts` (`findContextInfo`/`replyContext`) reads two known Baileys payloads:
+this block for an inbound delivery — the only example in the published API reference
+(https://wasenderapi.com/api-docs) is the `GET /api/messages/{msgId}/info` response — so its live
+shape on inbound traffic is **unverified** here. `src/inbound.ts` (`findContextInfo`/`replyContext`) reads two known Baileys payloads:
 
 - `externalAdReply` — click-to-WhatsApp ad traffic: `title`, `body`, and usually a **plaintext**
   `thumbnailUrl` (unlike first-party media, which is encrypted). Rendered as
@@ -197,14 +197,14 @@ Every rendered context emits a `inbound reply context rendered` log line carryin
 to confirm the real production shape without storing raw payloads.
 
 Neither `messages.received` nor `messages.upsert` carries a pushName/notify field anywhere in
-`data.messages` - confirmed against the full API reference (`wasenderapi-api-docs.md`, repo root),
+`data.messages` - confirmed against the full API reference (https://wasenderapi.com/api-docs),
 not just this file's earlier (looser) example. A contact's display name has to be fetched
 separately.
 
 ## Contact name lookup
 
-`GET /api/contacts/{contactPhoneNumber}` (session key), confirmed against
-`wasenderapi-api-docs.md`:
+`GET /api/contacts/{contactPhoneNumber}` (session key), confirmed against the published
+API reference (https://wasenderapi.com/api-docs):
 
 ```json
 {
@@ -340,7 +340,7 @@ lags the API in two known places:
   jid/text match in `src/inbound.ts`'s `detectOutboundEcho` exists only because this is unknown.
 - Whether `messages.upsert`'s `data.messages` is a single object like `messages.received`'s, or an
   array as older docs/blog posts describe for other events. **Resolved (2026-08-06):** the full
-  API reference (`wasenderapi-api-docs.md`, repo root) shows `messages.received` delivering a
+  API reference (https://wasenderapi.com/api-docs) shows `messages.received` delivering a
   single object and `messages.upsert` delivering an **array**. `src/routes/webhook.ts`
   normalizes both shapes and enqueues one queue message per entry.
 - Whether `message.sent` fires only for app-typed messages or for every outbound send including

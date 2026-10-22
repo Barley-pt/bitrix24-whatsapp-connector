@@ -127,7 +127,7 @@ export async function processInboundMessage(
   const context = replyContext(msg.message);
   if (context?.file) files.push(context.file);
   if (context) {
-    // Shape evidence, not content: wasenderapi-api-docs.md documents contextInfo only by example,
+    // Shape evidence, not content: the Wasender API docs document contextInfo only by example,
     // so the first real ad reply through production tells us whether externalAdReply really
     // carries a plaintext thumbnailUrl here or something else entirely.
     console.log(
@@ -478,7 +478,7 @@ async function processInboundNote(env: Env, msg: InboundNoteQueueMessage): Promi
 
   // Resolved by phone like every other inbound path, so a note arriving under the contact's other
   // jid still lands in their one chat. Reaction/delete payloads may carry a bare "+1234567890"
-  // rather than a jid (wasenderapi-api-docs.md); a phone jid embeds the number; a LID carries none
+  // rather than a jid (the Wasender API docs); a phone jid embeds the number; a LID carries none
   // and can only match by jid; a group's "phone" is its own jid (schema.sql's wa_phone).
   const remote = msg.remoteJid;
   const notePhone = isGroupJid(remote) ? remote : remote.includes('@') ? phoneFromJid(remote) : remote;
@@ -1118,7 +1118,7 @@ async function resolveContact(
     }
     const info = await wasender(env).getContactInfo(apiKey, waPhone);
     // getContactInfo's imgUrl is documented as frequently null (its example in
-    // wasenderapi-api-docs.md returns "imgUrl": null) even when the contact does have a picture,
+    // the Wasender API docs return "imgUrl": null) even when the contact does have a picture,
     // so the dedicated /picture endpoint is the fallback. Only an absolute http(s) URL is something
     // Bitrix can fetch; anything else is dropped rather than handed over to fail the send.
     const picture =
