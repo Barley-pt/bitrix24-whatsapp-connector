@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { type MiddlewareHandler, Hono } from 'hono';
 import { markDeadLettered, processInboundMessage } from './inbound';
 import { refreshAllPortals } from './license';
 import { mediaRoutes } from './media';
@@ -24,9 +24,20 @@ app.post('/bot/audio', (c) => c.text('ok', 200));
 // Registered before the mounts so it runs ahead of each group's own auth. Deliberately not on
 // /health (uptime checks), /media/* (signed proxy token), /events/* (Bitrix posts straight to the
 // handler URL) or the install routes (Bitrix Market's install frame) - see edgeAuth.ts.
-app.use('/webhook/*', requireEdgeAuth);
-app.use('/api/*', requireEdgeAuth);
-app.use('/admin/*', requireEdgeAuth);
+//
+// Mounted only while EDGE_SECRET is set. The gate verifies an X-Edge-Auth header stamped by a
+// trusted reverse proxy; a deployment without one (a bare workers.dev run, a local dev server)
+// has no proxy to verify and no header to expect, so the gate is skipped instead of failing
+// closed - skipping is safe because every route behind it still enforces its own auth
+// (webhook_secret, the signed app session, X-Admin-Key). Once the secret IS configured the gate
+// itself fails closed: missing or mismatched header, 403.
+const edgeAuth: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => {
+  if (!c.env.EDGE_SECRET) return next();
+  return requireEdgeAuth(c, next);
+};
+app.use('/webhook/*', edgeAuth);
+app.use('/api/*', edgeAuth);
+app.use('/admin/*', edgeAuth);
 
 app.route('/', eventRoutes);
 app.route('/', apiRoutes);
