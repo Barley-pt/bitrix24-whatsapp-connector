@@ -28,18 +28,23 @@ hosts only the Worker and D1.
 
 Honest list of what does not work yet, so you know before deploying:
 
-- **Group chats are not supported.** Group traffic is dropped at the WasenderAPI source
-  (`ignore_groups: true` in `src/wasender.ts`); there is no group code path.
-- **Inbound media links are temporary.** Wasender's `/api/decrypt-media` returns a signed URL on
-  its own domain, valid for one hour. Bitrix fetches the file when the message arrives, which is
-  normally immediate — but if Bitrix delays, the attachment in the timeline can go dead.
-  Re-hosting via R2 is the planned fix.
+- **Group chats are opt-in per number.** A new number starts with group traffic off; turn it on
+  per number in the connector settings widget (the app flips Wasender's `ignore_groups` for that
+  session and subscribes to `messages-group.received`). Channels and broadcast messages have no
+  destination in Bitrix and are always dropped.
+- **Inbound media is not re-hosted.** Decrypted media comes back from Wasender as a URL valid for
+  one hour, handed to Bitrix as-is. Bitrix fetches it right after arrival, which is normally
+  immediate — but a delayed fetch means a dead attachment in the timeline. The R2 bucket in the
+  stack (currently used for voice-note staging) is the natural home for re-hosting; not wired for
+  inbound yet.
 - **Click-to-chat may show "Join chat" instead of Reply/Forward/Close.** When the target chat's
   Open Line session was already worked (status `WORK`/`ANSWERED` rather than `NEW`), Bitrix shows
   a non-member "Join chat" button. The conversation still works; this is a UX quirk under
   investigation.
-- **Licensing is opt-in.** `LICENSE_ENFORCE` ships `false`; flip it to `true` in
-  `wrangler.jsonc` only after binding a key to your portal, or provisioning is blocked outright.
+- **Licensing is optional.** The app runs fully with no license — free forever with the ACP GROUP
+  attribution. A license key only unlocks white-label mode (your branding instead of ours), see
+  [LICENSE-WHITE-LABEL.md](LICENSE-WHITE-LABEL.md). The separate `LICENSE_ENFORCE` switch (ships
+  off) is for operators running this as a paid service who want plan caps enforced.
 
 ## Layout
 
@@ -108,7 +113,7 @@ Features read from the signed envelope's `features` JSON:
 |---|---|
 | `max_numbers` | `POST /api/sessions` - blocks provisioning a new WhatsApp number past the seat count |
 | `max_conversations_per_month` | `inbound.ts` - blocks a **new** WhatsApp conversation (no existing `chat_map` row) once the UTC-month counter (`usage_counters` table) hits the cap; an already-open conversation is never interrupted |
-| `group_conversations` | Not enforced - group traffic is dropped at the WasenderAPI source (`wasender.ts`'s `ignore_groups: true`), so there is no group code path to gate |
+| `group_conversations` | `POST /api/sessions/:id/group-messages` - blocks turning groups on for a number when enforcement is on and the plan lacks the feature; groups ship off by default per number regardless |
 | `message_scheduling` | Not enforced - the feature itself does not exist yet |
 | `white_label` | Not a route-level gate - it selects the branding `resolveBranding()` renders (see **Branding & white-label** below): when true, the forced free-tier footer is dropped and the `BRAND_*` overrides apply |
 
