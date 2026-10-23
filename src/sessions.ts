@@ -4,6 +4,19 @@ import { nowSec, uuid } from './util';
 import { type SessionStatus, WasenderError, wasender } from './wasender';
 
 /**
+ * Groups are ON for a brand new number (owner decision: a number that silently ignores the groups
+ * it was added to is the wrong way round), and both sides of that pair are written here rather than
+ * left to two independent defaults. Wasender hears about it first - createSession runs before the
+ * row exists because api_key/webhook_secret only come back at creation - so the row is given the
+ * same value in the INSERT below; stated apart, the two would disagree and either Wasender would
+ * deliver group messages webhook.ts drops (session.group_messages_enabled = 0) or the reverse.
+ * Stating it explicitly instead of trusting schema.sql's DEFAULT also keeps an environment whose
+ * column default is still the old migration's 0 (DEPLOY.md) provisioning groups-on like every
+ * other install.
+ */
+const GROUP_MESSAGES_ENABLED_ON_PROVISION = 1;
+
+/**
  * Provisioning a number, end to end: create it under the master WasenderAPI account, then persist the
  * credentials it hands back. Wasender returns api_key and webhook_secret only at creation and on
  * the detail endpoint, so both are stored immediately or they are lost.
@@ -56,8 +69,8 @@ export async function provisionSession(
   await env.DB.prepare(
     `INSERT INTO whatsapp_sessions
        (id, portal_id, provisioning_mode, wasender_api_key, wasender_session_id, webhook_secret,
-        webhook_token, phone_number, status, last_status_at, created_at)
-     VALUES (?, ?, 'master', ?, ?, ?, ?, ?, ?, ?, ?)`,
+        webhook_token, phone_number, group_messages_enabled, status, last_status_at, created_at)
+     VALUES (?, ?, 'master', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
@@ -67,6 +80,7 @@ export async function provisionSession(
       webhookSecret,
       webhookToken,
       created.phone_number,
+      GROUP_MESSAGES_ENABLED_ON_PROVISION,
       created.status ?? 'disconnected',
       nowSec(),
       nowSec(),

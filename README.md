@@ -28,10 +28,10 @@ hosts only the Worker and D1.
 
 Honest list of what does not work yet, so you know before deploying:
 
-- **Group chats are opt-in per number.** A new number starts with group traffic off; turn it on
-  per number in the connector settings widget (the app flips Wasender's `ignore_groups` for that
-  session and subscribes to `messages-group.received`). Channels and broadcast messages have no
-  destination in Bitrix and are always dropped.
+- **Group chats are on per number, with an opt-out.** A new number receives group traffic by
+  default; turn it off per number in the connector settings widget (the app flips Wasender's
+  `ignore_groups` for that session and stops `messages-group.received` from reaching the queue).
+  Channels and broadcast messages have no destination in Bitrix and are always dropped.
 - **Inbound media is re-hosted.** Decrypted media is fetched into the stack's R2 bucket the moment
   it is decrypted and handed to Bitrix as a `GET /media/inbound/:key` URL on this Worker's own
   domain, so the attachment outlives Wasender's one-hour temp link. The hourly cron deletes staged
@@ -113,7 +113,7 @@ Features read from the signed envelope's `features` JSON:
 |---|---|
 | `max_numbers` | `POST /api/sessions` - blocks provisioning a new WhatsApp number past the seat count |
 | `max_conversations_per_month` | `inbound.ts` - blocks a **new** WhatsApp conversation (no existing `chat_map` row) once the UTC-month counter (`usage_counters` table) hits the cap; an already-open conversation is never interrupted |
-| `group_conversations` | `POST /api/sessions/:id/group-messages` - blocks turning groups on for a number when enforcement is on and the plan lacks the feature; groups ship off by default per number regardless |
+| `group_conversations` | `POST /api/sessions/:id/group-messages` - blocks turning groups on for a number when enforcement is on and the plan lacks the feature; new numbers still ship with groups on per number (the column default is 1), so this gate only guards the explicit opt-in path |
 | `message_scheduling` | Not enforced - the feature itself does not exist yet |
 | `white_label` | Not a route-level gate - it selects the branding `resolveBranding()` renders (see **Branding & white-label** below): when true, the forced free-tier footer is dropped and the `BRAND_*` overrides apply |
 

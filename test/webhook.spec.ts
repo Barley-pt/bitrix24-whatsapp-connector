@@ -392,8 +392,23 @@ describe('POST /webhook/:token', () => {
     expect(sendSpy).not.toHaveBeenCalled();
   });
 
-  it('drops a messages-group.received delivery by default (group_messages_enabled=0)', async () => {
-    const { webhookToken } = await seedSession();
+  it('enqueues a messages-group.received delivery by default (groups are on for a new number)', async () => {
+    const { sessionId, webhookToken } = await seedSession();
+    const sendSpy = vi.spyOn(env.INBOUND_QUEUE, 'send').mockResolvedValue(FAKE_QUEUE_SEND_RESPONSE);
+
+    // Nothing flips the column here: a session provisioned just now carries the default of 1.
+    const res = await postWebhook(webhookToken, messagesGroupReceived());
+
+    expect(res.status).toBe(200);
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    const [sent] = sendSpy.mock.calls[0] as [InboundQueueMessage];
+    expect(sent.sessionId).toBe(sessionId);
+    expect(sent.message.key.remoteJid).toBe('123456789-987654321@g.us');
+  });
+
+  it('drops a messages-group.received delivery once the number has been opted out', async () => {
+    const { sessionId, webhookToken } = await seedSession();
+    await setGroupMessagesEnabled(sessionId, false);
     const sendSpy = vi.spyOn(env.INBOUND_QUEUE, 'send').mockResolvedValue(FAKE_QUEUE_SEND_RESPONSE);
 
     const res = await postWebhook(webhookToken, messagesGroupReceived());
@@ -419,7 +434,9 @@ describe('POST /webhook/:token', () => {
   });
 
   it('drops a fromMe:true group upsert too when group messages are disabled (defense in depth)', async () => {
-    const { webhookToken } = await seedSession();
+    const { sessionId, webhookToken } = await seedSession();
+    // The default is on - the opt-out has to be explicit for this drop to be the behavior under test.
+    await setGroupMessagesEnabled(sessionId, false);
     const sendSpy = vi.spyOn(env.INBOUND_QUEUE, 'send').mockResolvedValue(FAKE_QUEUE_SEND_RESPONSE);
 
     const res = await postWebhook(

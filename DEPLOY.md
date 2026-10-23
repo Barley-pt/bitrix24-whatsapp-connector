@@ -275,12 +275,20 @@ before deploying the Worker version that reads/writes this column:
 
 ```bash
 npx wrangler d1 execute bitrix_whatsapp --remote --command \
-  "ALTER TABLE whatsapp_sessions ADD COLUMN group_messages_enabled INTEGER NOT NULL DEFAULT 0"
+  "ALTER TABLE whatsapp_sessions ADD COLUMN group_messages_enabled INTEGER NOT NULL DEFAULT 1"
 ```
 
 Safe to run against a database that already has the column (Wrangler surfaces D1's "duplicate
 column name" error, nothing is altered twice). `schema.sql`'s `CREATE TABLE` already carries the
 column for fresh environments and the test suite.
+
+Groups default ON, so `DEFAULT 1` - a new number delivers its group chats until an operator opts it
+out in connector settings. A DEFAULT only shapes rows inserted after it exists: every session row
+already stored keeps whatever value it has, and an environment that ran the earlier `DEFAULT 0`
+form of this ALTER simply keeps that stored default too (D1/SQLite cannot change a column default
+in place). That is harmless for provisioning - `sessions.ts` writes `group_messages_enabled`
+explicitly when it inserts a new row - so newly provisioned numbers are groups-on on every
+install, migrated or fresh, and only pre-existing rows are ever left as they were.
 
 ### Audio transcription rollout
 

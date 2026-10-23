@@ -60,13 +60,17 @@ CREATE TABLE IF NOT EXISTS whatsapp_sessions (
   phone_number        TEXT,
   bitrix_line_id      INTEGER,              -- LINE passed to imconnector.activate
   connector_active    INTEGER NOT NULL DEFAULT 0,
-  -- Customer opt-in for group traffic on this number. Mirrors Wasender's own `ignore_groups`
-  -- session setting (0 = ignore_groups true, 1 = ignore_groups false) - see wasender.ts's
-  -- createSession/updateSession and routes/api.ts's POST /api/sessions/:id/group-messages.
+  -- Per-number group switch: 1 = deliver this number's group chats to its Open Line (the default),
+  -- 0 = drop them. Mirrors Wasender's own `ignore_groups` session setting (0 = ignore_groups true,
+  -- 1 = ignore_groups false) - see wasender.ts's createSession/updateSession and routes/api.ts's
+  -- POST /api/sessions/:id/group-messages, the opt-out operators use per number in connector
+  -- settings. DEFAULT is on because a number that silently ignores the groups it was added to is
+  -- the wrong way round; a DEFAULT only applies to rows inserted from here on - an existing
+  -- database keeps whatever every session's stored value already is, never rewritten in place.
   -- Existing databases need `ALTER TABLE whatsapp_sessions ADD COLUMN group_messages_enabled
-  -- INTEGER NOT NULL DEFAULT 0` run once via wrangler d1 execute (see DEPLOY.md) - CREATE TABLE
+  -- INTEGER NOT NULL DEFAULT 1` run once via wrangler d1 execute (see DEPLOY.md) - CREATE TABLE
   -- IF NOT EXISTS does not add columns to a table that already exists.
-  group_messages_enabled INTEGER NOT NULL DEFAULT 0,
+  group_messages_enabled INTEGER NOT NULL DEFAULT 1,
   -- Wasender's own vocabulary, stored verbatim rather than remapped, so a status we have not
   -- seen before cannot be silently flattened into the wrong bucket:
   -- connected | disconnected | connecting | need_scan | logged_out | expired

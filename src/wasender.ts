@@ -171,10 +171,12 @@ export class WasenderClient {
     phoneNumber: string;
     webhookUrl: string;
     /**
-     * Off by default: a brand new number provisions with groups ignored until the customer opts
-     * in (routes/api.ts's POST /api/sessions/:id/group-messages), mirroring the
-     * group_messages_enabled column's own default. Channel and broadcast traffic still has no
-     * destination in Bitrix regardless, so those stay dropped at the source unconditionally.
+     * On by default: a brand new number provisions with groups delivered to its Open Line, and the
+     * per-number toggle (routes/api.ts's POST /api/sessions/:id/group-messages) is what turns them
+     * off. Mirrors the group_messages_enabled column's own default of 1 (schema.sql) - provisionSession
+     * writes both sides of that pair at creation time, so they can never disagree. Channel and
+     * broadcast traffic still has no destination in Bitrix regardless, so those stay dropped at the
+     * source unconditionally.
      */
     ignoreGroups?: boolean;
   }): Promise<WasenderSession> {
@@ -188,7 +190,7 @@ export class WasenderClient {
         webhook_url: input.webhookUrl,
         webhook_enabled: true,
         webhook_events: WEBHOOK_EVENTS,
-        ignore_groups: input.ignoreGroups ?? true,
+        ignore_groups: input.ignoreGroups ?? false,
         ignore_channels: true,
         ignore_broadcasts: true,
       },

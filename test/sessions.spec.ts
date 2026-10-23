@@ -112,9 +112,28 @@ describe('POST /api/sessions', () => {
     // Always subscribed regardless of group_messages_enabled - ignore_groups is what actually
     // gates delivery (see wasender.ts's WEBHOOK_EVENTS comment).
     expect(sentBody.webhook_events).toContain('messages-group.received');
-    // A brand new number provisions with groups ignored until the customer opts in via POST
-    // /api/sessions/:id/group-messages.
-    expect(sentBody.ignore_groups).toBe(true);
+    // A brand new number provisions with groups ON: ignore_groups false upstream, and the row says
+    // the same. webhook.ts gates on this column, so the two have to agree from the first message
+    // or group traffic would be delivered and dropped (or the reverse).
+    expect(sentBody.ignore_groups).toBe(false);
+    expect(row?.group_messages_enabled).toBe(1);
+  });
+
+  it('schema-defaults group_messages_enabled to 1 for a row that does not set it', async () => {
+    const portal = await seedPortal();
+    await env.DB.prepare(
+      `INSERT INTO whatsapp_sessions (id, portal_id, provisioning_mode, webhook_token, created_at)
+       VALUES (?, ?, 'master', ?, ?)`,
+    )
+      .bind('row-without-group-column', portal.id, 'tok-without-group-column', Math.floor(Date.now() / 1000))
+      .run();
+
+    const row = await env.DB.prepare('SELECT group_messages_enabled FROM whatsapp_sessions WHERE id = ?')
+      .bind('row-without-group-column')
+      .first<{ group_messages_enabled: number }>();
+    // DEFAULT 1 in schema.sql - the opt-out is per number, taken later through
+    // POST /api/sessions/:id/group-messages, never the starting position.
+    expect(row?.group_messages_enabled).toBe(1);
   });
 
   it('rejects a phone number that is not E.164 before calling upstream', async () => {
@@ -326,8 +345,10 @@ describe('POST /api/sessions/:id/group-messages', () => {
     expect((await rows())[0]?.group_messages_enabled).toBe(1);
   });
 
-  it('disables groups: syncs ignore_groups:true upstream', async () => {
+  it('disables groups (the opt-out): syncs ignore_groups:true upstream', async () => {
     const id = await seedSession();
+    // Starts from the default of on, so this really is an opt-out being persisted.
+    expect((await rows())[0]?.group_messages_enabled).toBe(1);
 
     let sentBody: Record<string, unknown> = {};
     fetchMock
@@ -397,6 +418,11 @@ describe('POST /api/sessions/:id/group-messages', () => {
         .bind('member-1')
         .first<{ id: string }>();
       await seedLicense(portal?.id, 'member-1.bitrix24.com', false);
+      // The column defaults to on, so take it off first: otherwise "the blocked call wrote
+      // nothing" would be indistinguishable from the default it started from.
+      await env.DB.prepare('UPDATE whatsapp_sessions SET group_messages_enabled = 0 WHERE id = ?')
+        .bind(id)
+        .run();
 
       // No PUT interceptor registered - a call upstream would fail the test.
       const res = await withEnforcement(() =>

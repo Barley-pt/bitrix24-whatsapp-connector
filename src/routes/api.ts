@@ -249,10 +249,11 @@ apiRoutes.post('/api/sessions/:id/bind', async (c) => {
 
 /**
  * Toggle group traffic for one number, surfaced in the connector-settings widget
- * (ui/src/components/ConnectorSettings.tsx) so an operator can opt a Line into groups (or back
- * out) at the moment they connect a number to it. Wasender is updated first (the source of truth
- * for what actually gets delivered); the local column is only flipped once that PUT succeeds, so
- * the two never disagree about what was actually requested.
+ * (ui/src/components/ConnectorSettings.tsx) so an operator can opt a Line OUT of groups (or back
+ * in) at the moment they connect a number to it - the pair starts on for a new number, so this is
+ * an opt-out first and an opt-in only for numbers someone already turned off. Wasender is updated
+ * first (the source of truth for what actually gets delivered); the local column is only flipped
+ * once that PUT succeeds, so the two never disagree about what was actually requested.
  */
 apiRoutes.post('/api/sessions/:id/group-messages', async (c) => {
   const portal = c.get('portal');
