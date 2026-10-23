@@ -168,3 +168,99 @@ export async function seedSignedLicense(
     .run();
   return envelope;
 }
+
+/* ---------- in-memory AUDIO_STAGING (R2 stand-in) ---------- */
+
+/**
+ * Why this exists: vitest-pool-workers's isolated storage copies every file under a storage
+ * directory once per suite and asserts each one ends in ".sqlite", while workerd leaves R2's
+ * `*.sqlite-shm` behind the moment the bucket is written to - so binding a real `r2Buckets` entry
+ * makes every suite die at the storage pop with "Expected .sqlite" (vitest.config.ts spells the
+ * same thing out). AUDIO_STAGING is therefore left unbound and substituted with this bucket,
+ * which implements exactly the operations media.ts uses - put/get/list/delete with
+ * httpMetadata + customMetadata - so the staging, serving and cleanup paths run for real even
+ * though the storage underneath is test-local.
+ *
+ * Deliberately mirrors the binding's quirks: `get` returns the metadata written at put time, but
+ * `list` only does so for the fields asked for in `include` - an unqualified list answers with
+ * empty metadata objects, which is why cleanupStagedMedia has to pass `include: ['customMetadata']`.
+ */
+interface FakeStoredObject {
+  bytes: Uint8Array;
+  httpMetadata: Record<string, string>;
+  customMetadata: Record<string, string>;
+  uploaded: Date;
+  version: string;
+}
+
+async function readPutValue(value: unknown): Promise<Uint8Array> {
+  if (value instanceof ReadableStream) {
+    return new Uint8Array(await new Response(value).arrayBuffer());
+  }
+  if (typeof value === 'string') return new TextEncoder().encode(value);
+  if (value instanceof ArrayBuffer) return new Uint8Array(value.slice(0));
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength) as ArrayBuffer);
+  }
+  if (value instanceof Blob) return new Uint8Array(await value.arrayBuffer());
+  throw new Error(`fake R2: unsupported put value (${typeof value})`);
+}
+
+export class FakeR2Bucket {
+  private readonly store = new Map<string, FakeStoredObject>();
+
+  async put(
+    key: string,
+    value: unknown,
+    opts: { httpMetadata?: Record<string, string>; customMetadata?: Record<string, string> } = {},
+  ): Promise<void> {
+    this.store.set(key, {
+      bytes: await readPutValue(value),
+      httpMetadata: { ...(opts.httpMetadata ?? {}) },
+      customMetadata: { ...(opts.customMetadata ?? {}) },
+      uploaded: new Date(),
+      version: crypto.randomUUID(),
+    });
+  }
+
+  async get(key: string) {
+    const rec = this.store.get(key);
+    if (!rec) return null;
+    const bytes = rec.bytes;
+    return {
+      key,
+      version: rec.version,
+      size: bytes.byteLength,
+      uploaded: rec.uploaded,
+      httpMetadata: { ...rec.httpMetadata },
+      customMetadata: { ...rec.customMetadata },
+      body: new Response(bytes.slice()).body as ReadableStream<Uint8Array>,
+      text: async () => new TextDecoder().decode(bytes),
+      arrayBuffer: async () => bytes.slice().buffer,
+    };
+  }
+
+  async list(opts: { include?: string[]; cursor?: string } = {}) {
+    const include = opts.include ?? [];
+    const objects = [...this.store.entries()].map(([key, rec]) => ({
+      key,
+      version: rec.version,
+      size: rec.bytes.byteLength,
+      uploaded: rec.uploaded,
+      httpMetadata: include.includes('httpMetadata') ? { ...rec.httpMetadata } : {},
+      customMetadata: include.includes('customMetadata') ? { ...rec.customMetadata } : {},
+    }));
+    return { objects, truncated: false, cursor: undefined as string | undefined };
+  }
+
+  async delete(key: string): Promise<void> {
+    this.store.delete(key);
+  }
+}
+
+/** Swap the stand-in onto env. Call it in `beforeAll` of any spec that reaches AUDIO_STAGING. */
+export function installFakeR2(env: unknown): FakeR2Bucket {
+  const bucket = new FakeR2Bucket();
+  (env as { AUDIO_STAGING?: unknown }).AUDIO_STAGING = bucket;
+  return bucket;
+}

@@ -12,7 +12,7 @@ import worker from '../src/index';
 import { canonicalChatId, describeQuotedMessage, phoneFromJid, replyContext } from '../src/inbound';
 import { issueSession } from '../src/session';
 import type { InboundQueueMessage, LicenseEnvelope } from '../src/types';
-import { applySchema, resetDb, seedSignedLicense } from './helpers';
+import { applySchema, installFakeR2, resetDb, seedSignedLicense } from './helpers';
 
 const WASENDER = 'https://wasender.test';
 const BITRIX = 'https://member-1.bitrix24.com';
@@ -228,6 +228,9 @@ const sendMessagesOk = (chatId = '1767') => ({
 
 beforeAll(async () => {
   await applySchema();
+  // media.ts's staging bucket is not a real binding in tests (vitest.config.ts, R2 + isolated
+  // storage); the in-memory stand-in has to be in place before any message is processed.
+  installFakeR2(env);
   fetchMock.activate();
   fetchMock.disableNetConnect();
 });
@@ -415,7 +418,7 @@ describe('processInboundMessage: bound session, happy path', () => {
     expect(chat?.wa_name).toBeNull();
   });
 
-  it('decrypts media and includes it in files[]', async () => {
+  it('decrypts media and re-hosts it in R2 before handing Bitrix the files[] url', async () => {
     const sessionId = await seedSession();
     await bindToLine(sessionId, 12);
 
@@ -431,6 +434,11 @@ describe('processInboundMessage: bound session, happy path', () => {
         },
       })
       .reply(200, { success: true, publicUrl: 'https://www.wasenderapi.com/api/decrypted-media/wamid-2' });
+    // The temp URL is fetched once, right after decryption - that fetch IS the re-hosting step.
+    fetchMock
+      .get('https://www.wasenderapi.com')
+      .intercept({ path: '/api/decrypted-media/wamid-2', method: 'GET' })
+      .reply(200, 'JPEG-BYTES-ON-R2', { headers: { 'content-type': 'image/jpeg' } });
 
     let sentBody: Record<string, unknown> = {};
     fetchMock
@@ -458,9 +466,19 @@ describe('processInboundMessage: bound session, happy path', () => {
       'wamid-2',
     );
     const [message] = sentBody.MESSAGES as [{ message: { files: Array<{ url: string; name: string }> } }];
-    expect(message.message.files).toStrictEqual([
-      { url: 'https://www.wasenderapi.com/api/decrypted-media/wamid-2', name: 'image.jpeg' },
-    ]);
+    // Wasender's temp URL never reaches Bitrix - the file points at this Worker instead.
+    const [file] = message.message.files;
+    expect(file?.name).toBe('image.jpeg');
+    expect(file?.url).toMatch(/^https:\/\/relay\.test\/media\/inbound\/[0-9a-f]{8}-[0-9a-f-]{27}$/);
+
+    // ...and that URL really serves the staged bytes with the metadata written at PUT time.
+    const ctx = createExecutionContext();
+    const served = await worker.fetch(new Request(file!.url), env, ctx);
+    await waitOnExecutionContext(ctx);
+    expect(served.status).toBe(200);
+    expect(served.headers.get('content-type')).toBe('image/jpeg');
+    expect(served.headers.get('content-disposition')).toContain('filename="image.jpeg"');
+    expect(await served.text()).toBe('JPEG-BYTES-ON-R2');
   });
 
   it('finds media nested in a view-once envelope, and uses its caption as the text', async () => {
@@ -471,6 +489,9 @@ describe('processInboundMessage: bound session, happy path', () => {
       .get(WASENDER)
       .intercept({ path: '/api/decrypt-media', method: 'POST' })
       .reply(200, { success: true, publicUrl: 'https://www.wasenderapi.com/api/decrypted-media/wamid-3' });
+    // Deliberately NO interceptor for www.wasenderapi.com: disableNetConnect turns the re-host
+    // fetch into a failure, which is exactly the fallback case - stageInboundMedia returns null and
+    // buildFiles hands Bitrix the temp URL rather than dropping the attachment (asserted below).
 
     let sentBody: Record<string, unknown> = {};
     fetchMock
@@ -508,6 +529,8 @@ describe('processInboundMessage: bound session, happy path', () => {
     const [message] = sentBody.MESSAGES as [
       { message: { text: string; files: Array<{ url: string; name: string }> } },
     ];
+    // The fallback path: staging failed above, so Bitrix gets Wasender's own URL. Short-lived, but
+    // an attachment beats a dropped one.
     expect(message.message.files).toStrictEqual([
       { url: 'https://www.wasenderapi.com/api/decrypted-media/wamid-3', name: 'image.jpeg' },
     ]);
@@ -1226,6 +1249,10 @@ describe('processInboundMessage: app-sent (messages.upsert, fromMe: true)', () =
         success: true,
         publicUrl: 'https://www.wasenderapi.com/api/decrypted-media/wamid-app-2',
       });
+    fetchMock
+      .get('https://www.wasenderapi.com')
+      .intercept({ path: '/api/decrypted-media/wamid-app-2', method: 'GET' })
+      .reply(200, 'APP-JPEG-BYTES', { headers: { 'content-type': 'image/jpeg' } });
 
     let sentBody: Record<string, unknown> = {};
     fetchMock
@@ -1254,9 +1281,11 @@ describe('processInboundMessage: app-sent (messages.upsert, fromMe: true)', () =
     ];
     // No text on the message, so the SENT FROM MOBILE label stands alone.
     expect(message.message.text).toBe('SENT FROM MOBILE');
-    expect(message.message.files).toStrictEqual([
-      { url: 'https://www.wasenderapi.com/api/decrypted-media/wamid-app-2', name: 'image.jpeg' },
-    ]);
+    // App-sent media goes through the same re-hosting as customer media: Bitrix gets a URL on this
+    // Worker, never Wasender's temp one.
+    const [file] = message.message.files;
+    expect(file?.name).toBe('image.jpeg');
+    expect(file?.url).toMatch(/^https:\/\/relay\.test\/media\/inbound\/[0-9a-f]{8}-[0-9a-f-]{27}$/);
   });
 
   it('terminal-logs NO_PHONE_NUMBER when the contact was never seen inbound (no chat_map entry)', async () => {

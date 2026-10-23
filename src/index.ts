@@ -1,7 +1,7 @@
 import { type MiddlewareHandler, Hono } from 'hono';
 import { markDeadLettered, processInboundMessage } from './inbound';
 import { refreshAllPortals } from './license';
-import { mediaRoutes } from './media';
+import { mediaRoutes, cleanupStagedMedia } from './media';
 import { requireEdgeAuth } from './middleware/edgeAuth';
 import { markOutboundDeadLettered, processOutboundMessage } from './outbound';
 import { adminRoutes } from './routes/admin';
@@ -122,10 +122,25 @@ async function queue(batch: MessageBatch<unknown>, env: Env, _ctx: ExecutionCont
 }
 
 /** Cron trigger (wrangler.jsonc's triggers.crons) - revalidates every portal with a Maestro
- * license key on file. ensureFresh inside refreshAllPortals skips any portal whose cache is still
- * within the 12h staleness window, so most runs are cheap no-ops. */
+ * license key on file (ensureFresh inside refreshAllPortals skips any portal whose cache is still
+ * within the 12h staleness window, so most runs are cheap no-ops) and expires re-hosted inbound
+ * media in R2 that Bitrix never fetched (media.ts, cleanupStagedMedia - objects older than
+ * STAGED_MEDIA_MAX_AGE_SEC). Both run on every tick and neither is allowed to sink the other:
+ * a rejection inside the cleanup is logged as one JSON line rather than thrown. */
 async function scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-  ctx.waitUntil(refreshAllPortals(env));
+  ctx.waitUntil(
+    Promise.all([
+      refreshAllPortals(env),
+      cleanupStagedMedia(env).catch((err: unknown) => {
+        console.warn(
+          JSON.stringify({
+            msg: 'staged media cleanup failed',
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+      }),
+    ]),
+  );
 }
 
 export default { fetch: app.fetch, queue, scheduled };

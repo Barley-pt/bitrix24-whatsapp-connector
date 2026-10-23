@@ -4,6 +4,15 @@ export default defineWorkersConfig({
   test: {
     poolOptions: {
       workers: {
+        // No `r2Buckets` binding here, on purpose. vitest-pool-workers's isolated storage pushes
+        // and pops a stack frame per suite by copying every file under each storage directory and
+        // asserting each one ends in ".sqlite" - and workerd leaves R2's `*.sqlite-shm` behind as
+        // soon as the bucket is written to, so any suite touching a real bucket dies at the pop
+        // with "Expected .sqlite". (Turning isolated storage off instead makes every test file its
+        // own worker, which miniflare rejects with ERR_MULTIPLE_CONSUMERS for the queue bindings
+        // below.) So AUDIO_STAGING is not bound: specs that need it swap in the in-memory bucket
+        // from test/helpers.ts (installFakeR2), which implements exactly the subset media.ts uses.
+        // D1 and the queues keep running on real miniflare services.
         miniflare: {
           compatibilityDate: '2026-08-01',
           // Required by the test pool itself, not by the Worker.

@@ -32,11 +32,11 @@ Honest list of what does not work yet, so you know before deploying:
   per number in the connector settings widget (the app flips Wasender's `ignore_groups` for that
   session and subscribes to `messages-group.received`). Channels and broadcast messages have no
   destination in Bitrix and are always dropped.
-- **Inbound media is not re-hosted.** Decrypted media comes back from Wasender as a URL valid for
-  one hour, handed to Bitrix as-is. Bitrix fetches it right after arrival, which is normally
-  immediate — but a delayed fetch means a dead attachment in the timeline. The R2 bucket in the
-  stack (currently used for voice-note staging) is the natural home for re-hosting; not wired for
-  inbound yet.
+- **Inbound media is re-hosted.** Decrypted media is fetched into the stack's R2 bucket the moment
+  it is decrypted and handed to Bitrix as a `GET /media/inbound/:key` URL on this Worker's own
+  domain, so the attachment outlives Wasender's one-hour temp link. The hourly cron deletes staged
+  objects after 7 days - long past the seconds Bitrix normally takes to fetch. If staging fails the
+  temp URL is passed on instead of dropping the attachment.
 - **Click-to-chat may show "Join chat" instead of Reply/Forward/Close.** When the target chat's
   Open Line session was already worked (status `WORK`/`ANSWERED` rather than `NEW`), Bitrix shows
   a non-member "Join chat" button. The conversation still works; this is a UX quirk under

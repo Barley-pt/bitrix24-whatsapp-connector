@@ -148,6 +148,149 @@ mediaRoutes.get('/media/:token', async (c) => {
   });
 });
 
+// ─── Inbound media staging (R2) ─────────────────────────────────────────
+//
+// Direction audit, so the asymmetry is documented rather than accidental: OUTBOUND (above) is
+// Worker-served already - /media/:token wraps a Bitrix attachment link in a short-lived signed
+// token and streams it from Bitrix on demand, nothing is copied. INBOUND (below) is the opposite
+// shape: the bytes only exist at Wasender's temporary URL, so they are copied into R2 once, at
+// decrypt time, and served from here afterwards. Outbound is deliberately left alone - it does not
+// depend on anyone else's expiry beyond the send that is already in flight.
+
+/**
+ * How long a re-hosted inbound attachment survives. Bitrix normally fetches the URL within seconds
+ * of the message arriving; a week is headroom for a delayed or retried fetch, not a storage plan.
+ * The hourly cron (index.ts, scheduled) deletes anything older - see cleanupStagedMedia.
+ */
+export const STAGED_MEDIA_MAX_AGE_SEC = 7 * 24 * 60 * 60;
+
+/**
+ * Fetch Wasender's freshly decrypted media and re-host it in R2 under a random key, returning a URL
+ * this Worker serves (/media/inbound/:key) instead of Wasender's ~1h temp URL.
+ *
+ * Bitrix fetches the link server-to-server with no auth header to present, so possession of the URL
+ * is the only credential there is - the key is therefore a bare crypto.randomUUID(), unguessable by
+ * construction (same capability model as the audio route below, minus a session token Bitrix cannot
+ * send). Callers must be inside the decrypt-then-send window: the fetch here is itself the
+ * immediate fetch of the freshly decrypted URL.
+ *
+ * Never fatal. Returning null means "pass the temp URL on", because an attachment that expires
+ * early still beats one that is dropped outright.
+ */
+export async function stageInboundMedia(
+  env: Env,
+  sourceUrl: string,
+  filename: string,
+): Promise<string | null> {
+  const key = crypto.randomUUID();
+  try {
+    const res = await fetch(sourceUrl, { redirect: 'follow' });
+    if (!res.ok || !res.body) throw new Error(`media fetch HTTP ${res.status}`);
+    const contentType = res.headers.get('content-type') ?? 'application/octet-stream';
+    await env.AUDIO_STAGING.put(key, res.body, {
+      httpMetadata: { contentType },
+      // contentType is duplicated into customMetadata so the serve route does not depend on the
+      // binding surfacing httpMetadata on read; created_at is what the cleanup cron reads.
+      customMetadata: { contentType, filename, created_at: String(nowSec()) },
+    });
+    return `${env.PUBLIC_URL}/media/inbound/${key}`;
+  } catch (err) {
+    // Single-line JSON, path only: the source URL is Wasender's, its query string may carry
+    // credentials, and the reason is the only part worth keeping.
+    let path = 'unparseable-url';
+    try {
+      path = new URL(sourceUrl).pathname;
+    } catch {
+      /* keep the placeholder */
+    }
+    console.warn(
+      JSON.stringify({
+        msg: 'inbound media re-host failed; falling back to Wasender temp url',
+        path,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+    return null;
+  }
+}
+
+/** RFC 6266 filename for a staged object. `inline` keeps WhatsApp photos/videos previewable in the
+ * Bitrix timeline; the ASCII copy is what anything that downloads it uses. Both the header's quoted
+ * form and the R2 metadata come from WhatsApp's own fileName field, so quotes/CR/LF/backslash and
+ * anything outside ASCII are neutralised before the value reaches a header. */
+function contentDisposition(filename?: string): string {
+  const raw = filename && filename.trim() ? filename : 'file';
+  const ascii = raw.replace(/["\\\r\n]/g, '_').replace(/[^\x20-\x7e]/g, '_');
+  const encoded = encodeURIComponent(raw).replace(
+    /['()*]/g,
+    (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `inline; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
+/**
+ * Public GET for one staged inbound attachment. Public on purpose: Bitrix presents no session, no
+ * signature and no header of any kind - the unguessable key in the path is the whole
+ * authentication (stageInboundMedia). An unknown key, a malformed key and an expired key all answer
+ * identically, so the route never confirms which of the three a probe hit.
+ */
+mediaRoutes.get('/media/inbound/:key', async (c) => {
+  const key = c.req.param('key');
+  // Only the shape we ever write is looked up, so a scan never reaches R2.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)) {
+    return c.text('not found', 404);
+  }
+  const obj = await c.env.AUDIO_STAGING.get(key);
+  if (!obj) return c.text('not found', 404);
+  return new Response(obj.body, {
+    status: 200,
+    headers: {
+      'Content-Type':
+        obj.customMetadata?.contentType ?? obj.httpMetadata?.contentType ?? 'application/octet-stream',
+      'Content-Disposition': contentDisposition(obj.customMetadata?.filename),
+      // Long enough to outlive the object's own STAGED_MEDIA_MAX_AGE_SEC window; a cached copy
+      // served after deletion would only be a copy of what was already fetched.
+      'Cache-Control': 'private, max-age=604800',
+    },
+  });
+});
+
+/**
+ * Cron-only (index.ts, scheduled): drop staged objects past STAGED_MEDIA_MAX_AGE_SEC so the bucket
+ * does not grow without bound. Age is read from the customMetadata.created_at that
+ * stageInboundMedia writes and falls back to the object's own uploaded timestamp, so anything an
+ * older build put in the bucket still expires. Returns the number of objects deleted.
+ */
+export async function cleanupStagedMedia(env: Env): Promise<number> {
+  const cutoff = nowSec() - STAGED_MEDIA_MAX_AGE_SEC;
+  let deleted = 0;
+  let cursor: string | undefined;
+  for (;;) {
+    // `include` is not optional: a bare list() answers with empty metadata objects, so the
+    // created_at written at PUT time would be invisible here and nothing would ever expire.
+    const page = await env.AUDIO_STAGING.list({
+      ...(cursor ? { cursor } : {}),
+      include: ['customMetadata'],
+    });
+    for (const obj of page.objects) {
+      const written = Number(obj.customMetadata?.created_at);
+      const createdSec =
+        Number.isFinite(written) && written > 0
+          ? written
+          : Math.floor(obj.uploaded.getTime() / 1000);
+      if (createdSec > cutoff) continue;
+      await env.AUDIO_STAGING.delete(obj.key);
+      deleted += 1;
+    }
+    if (!page.truncated || !page.cursor) break;
+    cursor = page.cursor;
+  }
+  if (deleted > 0) {
+    console.log(JSON.stringify({ msg: 'staged media cleanup', deleted, olderThanSec: STAGED_MEDIA_MAX_AGE_SEC }));
+  }
+  return deleted;
+}
+
 // ─── Audio staging (R2) ─────────────────────────────────────────────────
 
 const AUDIO_MIME: Record<string, string> = {

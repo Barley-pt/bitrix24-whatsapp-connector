@@ -2,6 +2,7 @@ import { callMethod } from './bitrix';
 import { setChatName } from './connector';
 import { getPortalById } from './db';
 import * as license from './license';
+import { stageInboundMedia } from './media';
 import { getSessionById, sessionApiKey } from './sessions';
 import type { Env, InboundNoteQueueMessage, InboundQueueMessage, PortalRow, SessionRow } from './types';
 import { conversationsThisMonth, recordConversationInitiated } from './usage';
@@ -736,9 +737,16 @@ function contactPnFromAppSent(session: SessionRow, msg: InboundQueueMessage): st
 }
 
 /**
- * Fetch the one media envelope a WhatsApp message can carry (if any) and decrypt it via Wasender.
- * The returned URL is only valid for an hour (see wasender.ts, decryptMedia), so this must run
- * immediately before the Bitrix call, never earlier.
+ * Fetch the one media envelope a WhatsApp message can carry (if any), decrypt it via Wasender and
+ * re-host the bytes in R2 before handing Bitrix a link.
+ *
+ * decryptMedia returns Wasender's own publicUrl, valid for about an hour (see wasender.ts), which
+ * used to be passed straight through - a Bitrix fetch that lands late then meets a dead URL. So the
+ * whole flow is one sequence, run immediately before the Bitrix call: decrypt -> fetch the bytes ->
+ * PUT them into the staging bucket -> hand Bitrix this Worker's own durable URL (/media/inbound/:key).
+ * The R2 fetch IS the immediate fetch of the freshly decrypted URL, so the decrypt-before-send rule
+ * is unchanged, only the destination of the bytes differs. Staging failure falls back to Wasender's
+ * temp URL rather than dropping the attachment (stageInboundMedia logs that as one JSON line).
  */
 async function buildFiles(
   env: Env,
@@ -755,7 +763,8 @@ async function buildFiles(
   const publicUrl = await wasender(env).decryptMedia(apiKey, message);
 
   const name = media.body.fileName ?? guessFileName(media.key, media.body);
-  return [{ url: publicUrl, name }];
+  const stagedUrl = await stageInboundMedia(env, publicUrl, name);
+  return [{ url: stagedUrl ?? publicUrl, name }];
 }
 
 const AUDIO_EXTENSIONS = new Set(['ogg', 'opus', 'mp3', 'm4a', 'aac', 'wav', 'amr', 'oga', 'weba']);
