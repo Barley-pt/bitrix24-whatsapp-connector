@@ -517,6 +517,52 @@ context, so an inbound webhook token cannot read connector or activation state a
 `WRONG_AUTH_TYPE` / "Application context required". `imopenlines.config.list.get` does work over a
 webhook and is the way to confirm a Line still exists and is `ACTIVE: Y`.
 
+### Outbound delivery-confirmation rollout
+
+No schema change and no migration: nothing new is stored, and the behaviour takes effect with the
+next deploy. A plain `deploy.sh` is enough.
+
+The symptom it fixes: an operator's reply reached the customer on WhatsApp, but stayed red ("not
+delivered") in the Contact Center. Bitrix applies `imconnector.send.status.delivery` only while
+the message is still in its "sending" state, and answers `SUCCESS: true` even when it skips one,
+so a confirmation that fails or arrives tens of seconds late leaves the message red with nothing
+in the logs. Two defects fed that:
+
+- `message_log` is marked `'sent'` before the confirmation runs, so when the confirmation threw,
+  the queue retry found the row already `'sent'` and returned without ever confirming again.
+- No `fetch` had a timeout and the queue consumer walked its batch strictly in order, so one hung
+  REST call (116 s observed in production) delayed every reply behind it by 42-106 s.
+
+What changed:
+
+- **Timeouts.** Every Bitrix REST call, the OAuth token refresh, and every Wasender call give up
+  after 20 s. A timeout surfaces as `BitrixError` `ERROR_TIMEOUT` / `WasenderError` 504, so the
+  ordinary queue retry applies; it never triggers a token refresh.
+- **Per-conversation concurrency.** `src/index.ts`'s `queue()` splits a batch by conversation
+  (outbound `waJid`, inbound `message.key.remoteJid` or a note's `remoteJid`) and works up to four
+  conversations at once. Order inside a conversation is still batch order.
+- **Retryable confirmation.** A redelivered outbound message whose `message_log` row is already
+  `'sent'` repeats only the delivery confirmation, with the stored `wa_message_id` - it never
+  sends to WhatsApp again. `failed`/`echo`/`deleted` rows still stop immediately. The confirmation
+  itself is tried three times in place (1 s, then 2 s apart) before the failure goes back to the
+  queue.
+
+What to watch after deploying (`wrangler tail`):
+
+- One `delivery confirmed` line per confirmed reply:
+  `{"msg":"delivery confirmed","memberId":...,"bitrixMessageId":...,"sendMs":...,"confirmMs":...,"via":"send"|"retry"}`.
+  `confirmMs` is the send->confirmation latency: from just after the send (once the row is marked
+  `'sent'`) to Bitrix accepting the confirmation, in-place retries included. `sendMs` is the
+  Wasender send itself (`null` when `via` is `retry`, i.e. a queue redelivery that
+  only re-confirmed). A `delivery confirm failed` line means all three attempts failed and the
+  queue will retry the message. Neither line carries message text or tokens.
+- **Wasender's account protection.** Working four conversations at once means two replies from the
+  same number can now go out within the same few seconds, which trips Wasender's per-account
+  "1 message every 5 seconds" guard more often than the old one-at-a-time walk did. Each trip is
+  logged as `queue message failed` and retried after ~6 s (`ACCOUNT_PROTECTION_DELAY_SEC`); the
+  reply still arrives, just later. A steady stream of these on one number is the cue to look at
+  that number's volume, not a failure in itself.
+
 ## Client IP behind the proxy
 
 Worth understanding before adding rate limiting, abuse controls or the phase 7 admin panel.

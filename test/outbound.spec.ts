@@ -9,6 +9,7 @@ import {
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { upsertPortal } from '../src/db';
 import worker from '../src/index';
+import { confirmTiming } from '../src/outbound';
 import { issueSession } from '../src/session';
 import type { OutboundQueueMessage } from '../src/types';
 import { applySchema, resetDb } from './helpers';
@@ -253,10 +254,13 @@ describe('processOutboundMessage: happy path', () => {
       .get(WASENDER)
       .intercept({ path: '/api/send-message', method: 'POST' })
       .reply(200, { success: true, data: { msgId: 555111, jid: '+971500000000', status: 'in_progress' } });
+    // Twice: the redelivery finds the row 'sent' and repeats only the confirmation - never the send,
+    // which is intercepted once, so a second send would fail the delivery and show in the acks.
     fetchMock
       .get(BITRIX)
       .intercept({ path: '/rest/imconnector.send.status.delivery', method: 'POST' })
-      .reply(200, { result: { SUCCESS: true, DATA: [] } });
+      .reply(200, { result: { SUCCESS: true, DATA: [] } })
+      .times(2);
 
     await runQueue(batchOf('bwac-outbound', [outboundMessage(portalId)]));
     const result = await runQueue(batchOf('bwac-outbound', [outboundMessage(portalId)]));
@@ -520,5 +524,207 @@ describe('bwac-outbound-dlq consumer', () => {
     const log = await messageLogRow(sessionId, 86497);
     expect(log?.status).toBe('failed');
     expect(log?.error).toBe('DEAD_LETTERED');
+  });
+});
+
+async function seedLogRow(sessionId: string, bitrixMessageId: number, status: string, waMessageId: string | null) {
+  await env.DB.prepare(
+    `INSERT INTO message_log (id, session_id, direction, bitrix_message_id, status, wa_message_id, created_at)
+     VALUES (?, ?, 'outbound', ?, ?, ?, 1700000000)`,
+  )
+    .bind(crypto.randomUUID(), sessionId, bitrixMessageId, status, waMessageId)
+    .run();
+}
+
+/** The parsed JSON lines a console spy received whose `msg` matches. */
+function logLines(spy: { mock: { calls: unknown[][] } }, msg: string): Record<string, unknown>[] {
+  return spy.mock.calls
+    .map(([line]) => {
+      try {
+        return JSON.parse(String(line)) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    })
+    .filter((line): line is Record<string, unknown> => line?.msg === msg);
+}
+
+describe('processOutboundMessage: redelivery of an already-handled reply', () => {
+  // The row is marked 'sent' before confirmDelivery runs, so a confirmation that threw lands the
+  // queue retry here. It must repeat the confirmation - and only that.
+  it("re-confirms a 'sent' row with its stored wa_message_id and does not send again", async () => {
+    const { portalId, sessionId } = await seedSession();
+    await bindToLine(sessionId, 12);
+    await seedChatMap(sessionId, '123@lid', '+971500000000');
+    await seedLogRow(sessionId, 86497, 'sent', '777888');
+
+    // No Wasender intercept: with net connect disabled, any send would throw and the message
+    // would be retried instead of acked.
+    let deliveryBody: Record<string, unknown> = {};
+    fetchMock
+      .get(BITRIX)
+      .intercept({
+        path: '/rest/imconnector.send.status.delivery',
+        method: 'POST',
+        body: (raw) => {
+          deliveryBody = JSON.parse(raw as string);
+          return true;
+        },
+      })
+      .reply(200, { result: { SUCCESS: true, DATA: [] } });
+    const logSpy = vi.spyOn(console, 'log');
+
+    const result = await runQueue(batchOf('bwac-outbound', [outboundMessage(portalId)]));
+
+    expect(result.explicitAcks).toStrictEqual(['msg-0']);
+    const [msg] = deliveryBody.MESSAGES as [Record<string, unknown>];
+    expect(msg.im).toStrictEqual({ chat_id: 1807, message_id: 86497 });
+    expect((msg.message as Record<string, unknown>).id).toStrictEqual(['777888']);
+    expect((await messageLogRow(sessionId, 86497))?.status).toBe('sent');
+    expect(logLines(logSpy, 'delivery confirmed')).toMatchObject([
+      { memberId: 'member-1', bitrixMessageId: 86497, sendMs: null, via: 'retry' },
+    ]);
+  });
+
+  it("does nothing at all for a terminal 'failed' row", async () => {
+    const { portalId, sessionId } = await seedSession();
+    await bindToLine(sessionId, 12);
+    await seedChatMap(sessionId, '123@lid', '+971500000000');
+    // wa_message_id set on purpose: the status alone, not a missing id, must be what stops it.
+    await seedLogRow(sessionId, 86497, 'failed', '777888');
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const result = await runQueue(batchOf('bwac-outbound', [outboundMessage(portalId)]));
+
+    expect(result.explicitAcks).toStrictEqual(['msg-0']);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect((await messageLogRow(sessionId, 86497))?.status).toBe('failed');
+  });
+});
+
+describe('processOutboundMessage: delivery confirmation retry', () => {
+  async function sendThenConfirm(confirmReplies: Array<[number, unknown]>) {
+    const { portalId, sessionId } = await seedSession();
+    await bindToLine(sessionId, 12);
+    await seedChatMap(sessionId, '123@lid', '+971500000000');
+
+    fetchMock
+      .get(WASENDER)
+      .intercept({ path: '/api/send-message', method: 'POST' })
+      .reply(200, { success: true, data: { msgId: 555111, jid: '+971500000000', status: 'in_progress' } });
+    const confirmCalls = { count: 0 };
+    for (const [status, body] of confirmReplies) {
+      fetchMock
+        .get(BITRIX)
+        .intercept({ path: '/rest/imconnector.send.status.delivery', method: 'POST' })
+        // Counted here rather than in a body matcher, which runs once per candidate interceptor.
+        .reply(() => {
+          confirmCalls.count++;
+          return { statusCode: status, data: typeof body === 'string' ? body : JSON.stringify(body) };
+        });
+    }
+    // Stubbed so the 1 s / 2 s backoff doesn't really elapse - and so the delays can be asserted.
+    const sleepSpy = vi.spyOn(confirmTiming, 'sleep').mockResolvedValue(undefined);
+
+    const batch = batchOf('bwac-outbound', [outboundMessage(portalId)]);
+    const retrySpy = vi.spyOn(batch.messages[0]!, 'retry');
+    const result = await runQueue(batch);
+    return { sessionId, confirmCalls, sleepSpy, retrySpy, result };
+  }
+
+  it('retries the confirmation in place: two failures then success acks the message', async () => {
+    const logSpy = vi.spyOn(console, 'log');
+    const { sessionId, confirmCalls, sleepSpy, retrySpy, result } = await sendThenConfirm([
+      [522, 'error code: 522'],
+      [522, 'error code: 522'],
+      [200, { result: { SUCCESS: true, DATA: [] } }],
+    ]);
+
+    expect(confirmCalls.count).toBe(3);
+    expect(sleepSpy.mock.calls).toStrictEqual([[1000], [2000]]);
+    expect(result.explicitAcks).toStrictEqual(['msg-0']);
+    expect(retrySpy).not.toHaveBeenCalled();
+    expect((await messageLogRow(sessionId, 86497))?.status).toBe('sent');
+    const [line] = logLines(logSpy, 'delivery confirmed');
+    expect(line).toMatchObject({ memberId: 'member-1', bitrixMessageId: 86497, via: 'send' });
+    expect(typeof line?.sendMs).toBe('number');
+    expect(typeof line?.confirmMs).toBe('number');
+  });
+
+  it('rethrows once every attempt fails, so the queue retries the message', async () => {
+    const errorSpy = vi.spyOn(console, 'error');
+    const { sessionId, confirmCalls, retrySpy, result } = await sendThenConfirm([
+      [522, 'error code: 522'],
+      [522, 'error code: 522'],
+      [522, 'error code: 522'],
+    ]);
+
+    expect(confirmCalls.count).toBe(3);
+    expect(result.explicitAcks).toStrictEqual([]);
+    expect(retrySpy).toHaveBeenCalledTimes(1);
+    // Sent stays sent: the retry comes back through the confirm-only path, not a second send.
+    expect((await messageLogRow(sessionId, 86497))?.status).toBe('sent');
+    expect(logLines(errorSpy, 'delivery confirm failed')).toMatchObject([
+      {
+        memberId: 'member-1',
+        bitrixMessageId: 86497,
+        error: 'imconnector.send.status.delivery: ERROR_UNEXPECTED_ANSWER - HTTP 522',
+      },
+    ]);
+  });
+});
+
+describe('queue consumer: per-conversation ordering', () => {
+  // Batch order A1, A2, B1 where A and B are different chats. A1's send stalls until B1 has been
+  // confirmed (or 1 s passes, so a serial consumer fails the assertions instead of hanging).
+  it('keeps one chat in order while a slow message in it does not hold up another chat', async () => {
+    const { portalId, sessionId } = await seedSession();
+    await bindToLine(sessionId, 12);
+    await seedChatMap(sessionId, 'a@lid', '+971500000001');
+    await seedChatMap(sessionId, 'b@lid', '+971500000002');
+
+    const events: string[] = [];
+    let releaseA1!: () => void;
+    const b1Confirmed = new Promise<void>((resolve) => {
+      releaseA1 = resolve;
+    });
+    const sendIds: Record<string, number> = {};
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      if (url === `${WASENDER}/api/send-message`) {
+        const text = String(body.text);
+        events.push(`send-start:${text}`);
+        if (text === 'A1') {
+          await Promise.race([b1Confirmed, new Promise((resolve) => setTimeout(resolve, 1000))]);
+        }
+        events.push(`send-end:${text}`);
+        sendIds[text] = Object.keys(sendIds).length + 1;
+        return Response.json({ success: true, data: { msgId: sendIds[text], jid: 'x', status: 'in_progress' } });
+      }
+      if (url.endsWith('/imconnector.send.status.delivery')) {
+        const [msg] = body.MESSAGES as [{ im: { message_id: number } }];
+        const label = { 1: 'A1', 2: 'A2', 3: 'B1' }[msg.im.message_id];
+        events.push(`confirm:${label}`);
+        if (label === 'B1') releaseA1();
+        return Response.json({ result: { SUCCESS: true, DATA: [] } });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+
+    const result = await runQueue(
+      batchOf('bwac-outbound', [
+        outboundMessage(portalId, { waJid: 'a@lid', bitrixMessageId: 1, text: 'A1' }),
+        outboundMessage(portalId, { waJid: 'a@lid', bitrixMessageId: 2, text: 'A2' }),
+        outboundMessage(portalId, { waJid: 'b@lid', bitrixMessageId: 3, text: 'B1' }),
+      ]),
+    );
+
+    expect([...result.explicitAcks].sort()).toStrictEqual(['msg-0', 'msg-1', 'msg-2']);
+    // B1 went through while A1 was still stuck...
+    expect(events.indexOf('confirm:B1')).toBeLessThan(events.indexOf('send-end:A1'));
+    // ...and A2 waited for A1 to finish completely.
+    expect(events.indexOf('confirm:A1')).toBeLessThan(events.indexOf('send-start:A2'));
+    expect(events.filter((e) => e.startsWith('send-start'))).toHaveLength(3);
   });
 });

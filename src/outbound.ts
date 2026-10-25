@@ -41,7 +41,19 @@ export async function processOutboundMessage(env: Env, msg: OutboundQueueMessage
   }
 
   const claim = await claimMessageLog(env, session.id, msg.bitrixMessageId);
-  if (!claim.proceed) return; // Already sent, or already given up on, by an earlier delivery.
+  if (!claim.proceed) {
+    // 'failed'/'echo'/'deleted' are terminal: an earlier delivery already gave up on this reply.
+    if (claim.status !== 'sent' || !claim.waMessageId) return;
+    // 'sent' means WhatsApp already has it, but not that Bitrix took the confirmation: the row is
+    // marked before confirmDelivery runs, so a confirmation that threw got the queue to retry
+    // straight into this branch - which used to return here, leaving the operator's message red
+    // for good. Never send again; only repeat the confirmation, which re-marks the message in
+    // Bitrix and never resends one.
+    const sentPortal = await getPortalById(env, session.portal_id);
+    if (!sentPortal) throw new Error(`session ${session.id} references missing portal ${session.portal_id}`);
+    await confirmDeliveryWithRetry(env, sentPortal, msg, claim.waMessageId, null, 'retry');
+    return;
+  }
 
   const portal = await getPortalById(env, session.portal_id);
   if (!portal) throw new Error(`session ${session.id} references missing portal ${session.portal_id}`);
@@ -64,9 +76,11 @@ export async function processOutboundMessage(env: Env, msg: OutboundQueueMessage
 
   // Bitrix's delivery confirmation takes one external id, and an operator's reply can be several
   // files, so the first message actually sent is the one it points at.
+  const sendStart = Date.now();
   const msgId = files.length
     ? await sendFiles(env, portal, apiKey, chat.wa_phone, strippedText, files)
     : (await wasender(env).sendText(apiKey, chat.wa_phone, strippedText)).msgId;
+  const sendMs = Date.now() - sendStart;
 
   // echo_jid/echo_phone/echo_text let inbound.ts's detectOutboundEcho recognize this exact send
   // if messages.upsert echoes it back with fromMe: true, so it isn't posted to Bitrix a second
@@ -79,13 +93,78 @@ export async function processOutboundMessage(env: Env, msg: OutboundQueueMessage
     .bind(String(msgId), msg.waJid, chat.wa_phone, normalizeEchoText(strippedText), claim.id)
     .run();
 
-  await confirmDelivery(env, portal, {
-    lineId: msg.lineId,
-    bitrixChatId: msg.bitrixChatId,
-    bitrixMessageId: msg.bitrixMessageId,
-    waJid: msg.waJid,
-    waMessageId: String(msgId),
-  });
+  await confirmDeliveryWithRetry(env, portal, msg, String(msgId), sendMs, 'send');
+}
+
+/** Pauses between confirmation attempts - one after each failure but the last. */
+const CONFIRM_RETRY_DELAYS_MS = [1_000, 2_000];
+
+/** Indirection so tests can stub the backoff out instead of really waiting (outbound.spec.ts). */
+export const confirmTiming = {
+  sleep: (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms)),
+};
+
+/**
+ * Confirm delivery to Bitrix, retrying a few times in place before handing the failure back to
+ * the queue.
+ *
+ * imconnector.send.status.delivery is only applied while Bitrix still has the message in its
+ * "sending" state, and it answers SUCCESS: true even when it skips one - so a confirmation that
+ * fails or lands tens of seconds late leaves the operator's message red ("not delivered") in the
+ * Contact Center while the customer did receive it on WhatsApp, D1 says 'sent', and nothing on our
+ * side notices. Hence the quick inline retries (a queue retry can come much later), and one log
+ * line per outcome so a missed confirmation is visible. Only the confirmation is retried here: the
+ * Wasender send must never be repeated.
+ *
+ * Throws the last error once attempts run out, so the queue retries the message as before, which
+ * then comes back through the 'sent' branch of processOutboundMessage.
+ */
+async function confirmDeliveryWithRetry(
+  env: Env,
+  portal: PortalRow,
+  msg: OutboundQueueMessage,
+  waMessageId: string,
+  sendMs: number | null,
+  via: 'send' | 'retry',
+): Promise<void> {
+  const confirmStart = Date.now();
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await confirmDelivery(env, portal, {
+        lineId: msg.lineId,
+        bitrixChatId: msg.bitrixChatId,
+        bitrixMessageId: msg.bitrixMessageId,
+        waJid: msg.waJid,
+        waMessageId,
+      });
+      break;
+    } catch (err) {
+      const delay = CONFIRM_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined) {
+        console.error(
+          JSON.stringify({
+            msg: 'delivery confirm failed',
+            memberId: portal.member_id,
+            bitrixMessageId: msg.bitrixMessageId,
+            confirmMs: Date.now() - confirmStart,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+        throw err;
+      }
+      await confirmTiming.sleep(delay);
+    }
+  }
+  console.log(
+    JSON.stringify({
+      msg: 'delivery confirmed',
+      memberId: portal.member_id,
+      bitrixMessageId: msg.bitrixMessageId,
+      sendMs,
+      confirmMs: Date.now() - confirmStart,
+      via,
+    }),
+  );
 }
 
 /** Extensions WhatsApp renders as media rather than as a file attachment. */
@@ -218,9 +297,9 @@ async function claimMessageLog(
   env: Env,
   sessionId: string,
   bitrixMessageId: number,
-): Promise<{ id: string; proceed: boolean }> {
+): Promise<{ id: string; status: string; waMessageId: string | null; proceed: boolean }> {
   const existing = await selectMessageLog(env, sessionId, bitrixMessageId);
-  if (existing) return { id: existing.id, proceed: existing.status === 'pending' };
+  if (existing) return claimOf(existing);
 
   const id = uuid();
   try {
@@ -230,27 +309,31 @@ async function claimMessageLog(
     )
       .bind(id, sessionId, bitrixMessageId, nowSec())
       .run();
-    return { id, proceed: true };
+    return { id, status: 'pending', waMessageId: null, proceed: true };
   } catch {
     // Lost a race with a concurrent delivery of the same event - use what it inserted.
     const raced = await selectMessageLog(env, sessionId, bitrixMessageId);
     if (!raced) {
       throw new Error(`message_log insert failed for bitrix message ${bitrixMessageId} but no row exists`);
     }
-    return { id: raced.id, proceed: raced.status === 'pending' };
+    return claimOf(raced);
   }
+}
+
+function claimOf(row: { id: string; status: string; wa_message_id: string | null }) {
+  return { id: row.id, status: row.status, waMessageId: row.wa_message_id, proceed: row.status === 'pending' };
 }
 
 function selectMessageLog(
   env: Env,
   sessionId: string,
   bitrixMessageId: number,
-): Promise<{ id: string; status: string } | null> {
+): Promise<{ id: string; status: string; wa_message_id: string | null } | null> {
   return env.DB.prepare(
-    `SELECT id, status FROM message_log WHERE session_id = ? AND direction = 'outbound' AND bitrix_message_id = ?`,
+    `SELECT id, status, wa_message_id FROM message_log WHERE session_id = ? AND direction = 'outbound' AND bitrix_message_id = ?`,
   )
     .bind(sessionId, bitrixMessageId)
-    .first<{ id: string; status: string }>();
+    .first<{ id: string; status: string; wa_message_id: string | null }>();
 }
 
 async function writeTerminalLog(

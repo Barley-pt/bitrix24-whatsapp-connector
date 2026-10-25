@@ -45,6 +45,36 @@ Honest list of what does not work yet, so you know before deploying:
   attribution. A license key only unlocks white-label mode (your branding instead of ours), see
   [LICENSE-WHITE-LABEL.md](LICENSE-WHITE-LABEL.md). The separate `LICENSE_ENFORCE` switch (ships
   off) is for operators running this as a paid service who want plan caps enforced.
+- **A delivery confirmation can still be missed.** Bitrix applies
+  `imconnector.send.status.delivery` only while the message is still "sending" and answers
+  `SUCCESS: true` even when it skips one, so if the confirmation keeps failing until the queue's
+  retries run out, the reply stays red ("not delivered") in the Contact Center although the
+  customer received it. See "Message flow" below for how the connector keeps that window small.
+
+## Message flow
+
+Both directions go through Cloudflare Queues: `routes/webhook.ts` enqueues WhatsApp traffic on
+`bwac-inbound`, `routes/events.ts` enqueues operator replies (`ONIMCONNECTORMESSAGEADD`) on
+`bwac-outbound`, and each has a `-dlq` twin for messages that exhausted their retries. The queue
+consumer (`src/index.ts`) splits each batch by conversation and works up to four conversations at
+once; messages of one conversation keep their batch order. Every message is acked or retried on
+its own, so one failure never fails its siblings.
+
+An operator reply (`src/outbound.ts`):
+
+1. A `message_log` row keyed on Bitrix's message id is claimed, so a redelivered queue message
+   never sends twice.
+2. The text (BBCode stripped) and any attachments go out through Wasender, and the row is marked
+   `'sent'` with Wasender's message id.
+3. Delivery is confirmed back to Bitrix (`imconnector.send.status.delivery`), which turns the
+   operator's message from "sending" to delivered. The confirmation is tried three times in place
+   (1 s, then 2 s apart); if it still fails, the queue retries the message, and that redelivery
+   finds the row `'sent'` and repeats **only** the confirmation, with the stored message id.
+
+Every Bitrix and Wasender request gives up after 20 s and is retried through the queue, so one
+hung call cannot hold up other conversations. Each confirmation logs one JSON line,
+`delivery confirmed` (with `sendMs`/`confirmMs` latencies) or `delivery confirm failed`, without
+message text or tokens - see DEPLOY.md, "Outbound delivery-confirmation rollout".
 
 ## Layout
 
@@ -56,9 +86,9 @@ src/
   session.ts        HMAC-signed short-lived SPA session token
   app-shell.ts      Serves the built SPA with the session injected
   db.ts             Portal persistence
-  bitrix.ts         REST client, refresh-on-expired, error typing
+  bitrix.ts         REST client, refresh-on-expired, error typing, 20 s request timeout
   connector.ts      imconnector.register + event.bind + CRM detail-tab placement.bind
-  wasender.ts       WasenderAPI client (PAT and session-key calls kept separate)
+  wasender.ts       WasenderAPI client (PAT and session-key calls kept separate), 20 s request timeout
   sessions.ts       Provision a number, QR, status refresh, removal
   inbound.ts        Queue consumer: session -> Bitrix chat via imconnector.send.messages
   outbound.ts       Queue consumer: operator reply -> WhatsApp via Wasender, BBCode stripped

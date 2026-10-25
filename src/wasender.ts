@@ -115,6 +115,15 @@ const MEDIA_URL_PARAM: Record<OutboundMediaKind, string> = {
   document: 'documentUrl',
 };
 
+/**
+ * Workers `fetch` has no default timeout. One send that never answers used to hold its queue
+ * consumer for as long as the runtime allowed (116 s observed in production, ending in an HTTP
+ * 520), and every operator reply behind it reached Bitrix's delivery confirmation after Bitrix had
+ * stopped applying it - delivered on WhatsApp, red ("not delivered") in the Contact Center. 20 s is
+ * far beyond a healthy Wasender answer.
+ */
+const TIMEOUT_MS = 20_000;
+
 function readRateLimit(res: Response): RateLimit {
   const num = (h: string) => {
     const v = res.headers.get(h);
@@ -138,15 +147,27 @@ export class WasenderClient {
     token: string,
     init: { method?: string; body?: unknown } = {},
   ): Promise<{ data: T; rateLimit: RateLimit }> {
-    const res = await fetch(`${this.baseUrl.replace(/\/$/, '')}${path}`, {
-      method: init.method ?? 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-        ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
-      },
-      ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl.replace(/\/$/, '')}${path}`, {
+        method: init.method ?? 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+          ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        },
+        ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+    } catch (err) {
+      // No Response to map, so this reports as a gateway timeout: >= 500 keeps it retryable, and
+      // index.ts's queue handler retries it like any other upstream failure.
+      const name = (err as { name?: unknown } | null)?.name;
+      if (name === 'TimeoutError' || name === 'AbortError') {
+        throw new WasenderError(504, `request timed out after ${TIMEOUT_MS}ms`);
+      }
+      throw err;
+    }
 
     const rateLimit = readRateLimit(res);
     const body = (await res.json().catch(() => null)) as
