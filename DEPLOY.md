@@ -5,10 +5,30 @@ to WhatsApp messages arriving in your Bitrix24 Open Lines.
 
 Budget an hour; most of it is Bitrix24's own portal forms.
 
-**What you end up with:** a Cloudflare Worker (compute), a D1 database (state), four queues
-(inbound/outbound plus their dead-letter queues) and an R2 bucket (media staging) — all inside
-*your* account — plus a Bitrix24 Market application that you register once and install on your
-portal.
+**Stuck, or not sure about a step? Ask info@acp-24.com** — questions about deployment, odd error
+messages, feedback on these docs, all welcome.
+
+**What you end up with.** Four things, all inside *your* Cloudflare account:
+
+- a **Cloudflare Worker** — the connector itself, a small program that runs on Cloudflare's edge.
+  Cloudflare's building blocks are managed hosting: **you do not manage any servers.**
+- a **D1 database** — Cloudflare's database, where the connector keeps its state (connections,
+  tokens, logs).
+- **four queues** — Cloudflare's mailboxes for work to do, so a slow message never blocks the
+  others (one each for inbound and outbound, plus a dead-letter queue behind each for messages
+  that kept failing).
+- an **R2 bucket** — Cloudflare's file storage, used to hold attachments that come in from
+  WhatsApp.
+
+Plus a **Bitrix24 Market application** that you register once and install on your portal. The
+Bitrix24 side of things you will meet in this guide:
+
+- the **Contact Center** — the screen in Bitrix24 where all conversations, whatever the channel,
+  are answered.
+- an **Open Line** — Bitrix24's routing rule that decides where an incoming conversation lands.
+  Your WhatsApp number is bound to one.
+- a **Market application** — a Bitrix24 app registered in a partner account and installed on a
+  portal, as opposed to one built directly on a single portal.
 
 ---
 
@@ -20,16 +40,17 @@ portal.
 | **Node.js 20 or 22** | Node 24+ breaks the local test toolchain; 20/22 is what CI runs |
 | **Cloudflare API token** | Custom, account-scoped, with four permissions — see step 1 |
 | **Bitrix24 partner account** | Required to create a Market application (registration is free) |
-| **WasenderAPI account + API token** | The connector provisions WhatsApp sessions under *your* WasenderAPI account |
+| **WasenderAPI account + API token** | WasenderAPI holds the WhatsApp connection for your number; the connector creates its WhatsApp sessions under *your* WasenderAPI account — see step 2 |
 
 Optional: a server and a domain, if you want the app on your own hostname instead of
-`*.workers.dev` — see [step 6](#step-6-optional-your-own-domain).
+`*.workers.dev` — see [step 6](#step-6-optional--your-own-domain).
 
 ---
 
 ## Step 1 — Create the Cloudflare API token
 
-Cloudflare dashboard → **My Profile → API Tokens → Create Token → Create Custom Token**.
+The setup wizard and every later deploy act on your Cloudflare account through an API token. Create
+one at Cloudflare dashboard → **My Profile → API Tokens → Create Token → Create Custom Token**.
 
 Give it exactly these four permissions, all scoped to your account:
 
@@ -59,15 +80,18 @@ cd bitrix24-whatsapp-connector
 npm run setup
 ```
 
-The wizard (`scripts/setup.mjs`, no dependencies) runs eight stages:
+`npm run setup` is one interactive wizard that takes you from this clone to a deployed, healthy
+connector. It runs eight stages:
 
 1. **Preflight** — Node version, `wrangler` availability, Cloudflare authentication.
 2. **Patch `wrangler.jsonc`** — your account id, public URL and Bitrix client id, with a printed
    diff. Comments and formatting are preserved.
-3. **Create resources** — D1 `bitrix_whatsapp`, R2 `bwac-audio-staging`, and all four queues
-   (`bwac-inbound`, `bwac-outbound`, both `-dlq`). "Already exists" is treated as success.
+3. **Create resources** — the D1 database `bitrix_whatsapp`, the R2 bucket `bwac-audio-staging`,
+   and all four queues (`bwac-inbound`, `bwac-outbound`, both `-dlq`). "Already exists" is treated
+   as success.
 4. **Apply the schema** — `schema.sql` against the remote database.
-5. **Write `.deploy.env`** — chmod 600, git-ignored; holds your API token and generated secrets.
+5. **Write `.deploy.env`** — a file on your machine holding your API token and the generated
+   secrets; readable only by you (chmod 600) and git-ignored.
 6. **Build and deploy** — `npm ci`, UI build, `wrangler deploy`.
 7. **Upload Worker secrets** — values piped on stdin, never echoed.
 8. **Health check** — retries `GET /health`, then prints the Bitrix24 card from step 3.
@@ -79,12 +103,44 @@ The wizard (`scripts/setup.mjs`, no dependencies) runs eight stages:
 | Cloudflare account id | Pre-filled when it can be derived from your token |
 | Public URL | Defaults to `https://bitrix-whatsapp-connector.<your-subdomain>.workers.dev` |
 | Bitrix24 client id / secret | **You can leave these as placeholders on the first run** — see below |
-| WasenderAPI token | Your personal access token (masked as you type) |
+| WasenderAPI token | Your personal access token (masked as you type) — see below |
 | Reverse proxy in front? | Answer *no* unless you are doing step 6 |
 
 It generates the secrets you would otherwise have to invent — `APP_SECRET`, `TOKEN_ENC_KEY`
 (base64 of exactly 32 bytes), `ADMIN_SECRET`, and `EDGE_SECRET` if you chose a proxy — using
 `node:crypto`.
+
+### Where the WasenderAPI token comes from
+
+WasenderAPI (https://wasenderapi.com) is the service that actually talks to WhatsApp: it holds the
+WhatsApp connection for your number and sends and receives its messages. The connector is the
+bridge between that service and Bitrix24, and it uses **your own** WasenderAPI account — never
+anyone else's. So you need an account there before you can connect a number.
+
+**What to copy.** Your API token from the WasenderAPI dashboard; their documentation calls it a
+*personal access token* (or API key). Sign up at https://wasenderapi.com, then copy the token from
+the dashboard's API/token section. Their docs: https://wasenderapi.com/api-docs.
+
+**Where it goes.** The wizard prompts:
+
+```
+WasenderAPI master token (personal access token):
+```
+
+Paste the token. It is masked as you type and never printed. The wizard writes it to `.deploy.env`
+as `WASENDER_MASTER_TOKEN` (chmod 600, git-ignored) and uploads it to your deployment as a Worker
+secret — a value the deployed connector can read but nobody can read back out of the dashboard. If
+you are configuring things by hand instead of with the wizard, `WASENDER_MASTER_TOKEN` is the value
+to fill in.
+
+**What the connector uses it for.** Creating a WhatsApp session for each number you add — that is
+what "connecting a number" is. Each session gets its own key, which the connector stores encrypted
+in your database; the master token is only used to create and manage sessions.
+
+**What to watch.** Your WasenderAPI plan and its limits apply: they gate how fast messages can be
+sent, and the connector paces and retries when it reaches that limit, so a reply may arrive later
+rather than fail. Every number you connect lives in that one WasenderAPI account, so keep the token
+safe, and check that your plan covers the message volume you expect.
 
 ### Running it again later
 
@@ -102,7 +158,7 @@ npm run setup -- --non-interactive         # scripted: fail listing anything mis
 
 ### Placeholder values are fine on the first run
 
-You can get a running Worker before your Bitrix application exists: answer with a placeholder
+You can get a running connector before your Bitrix application exists: answer with a placeholder
 client id/secret, and set them for real afterwards (step 3). The app installs either way, but it
 **cannot refresh an expired OAuth token without the real credentials**, so a portal on a
 placeholder breaks about an hour after install.
@@ -146,8 +202,9 @@ npm run ui:build && npx wrangler deploy
 ### Two habits that come with being a Market app
 
 - **Bump `CONNECTOR_VERSION` in `wrangler.jsonc` whenever the connector's name, icon or handler
-  changes.** `imconnector.register` is gated on it, so without a bump the Contact Center keeps
-  showing the old channel. The bump makes every portal re-register on its next event or app open.
+  changes.** The connector's registration in Contact Center is gated on that value, so without a
+  bump the Contact Center keeps showing the old channel. The bump makes every portal re-register on
+  its next event or app open.
 - **Treat a Market version publish as a deploy trigger.** Ship the Worker first, then publish the
   version, so the handler for the resulting `ONAPPUPDATE` (which carries a refreshed
   `application_token`) is already live.
@@ -179,7 +236,7 @@ is broken.
 2. Scan it from the phone you want to connect (WhatsApp → Linked devices).
 3. Bind the number to one of your Bitrix24 Open Lines.
 4. **Group messages are on by default** for a new number; turn them off per number in the
-   connector settings if you do not want group chats in your Open Lines.
+   connector's settings in Contact Center if you do not want group chats in your Open Lines.
 
 Each number maps to one Open Line, and several numbers can run on one portal.
 
@@ -208,12 +265,17 @@ usually repairs it.
 
 ## Step 6 (optional) — your own domain
 
+By default the app lives at its `*.workers.dev` address. If you want it on your own hostname, there
+are two ways, and which one you pick depends only on where your domain's DNS is managed.
+
 **If your domain's DNS is on Cloudflare, do it there.** Add a Worker custom domain (Workers →
 your Worker → Settings → Domains & Routes) pointing at your hostname, set `PUBLIC_URL` in
 `wrangler.jsonc` to it, and re-run `npm run setup`. No reverse proxy is involved, and you should
 answer *no* to the wizard's proxy question.
 
-**If your DNS is elsewhere**, put a reverse proxy (nginx) in front of the `*.workers.dev` origin:
+**If your DNS is elsewhere**, put a reverse proxy (nginx — the program that receives the browser's
+request for your domain and forwards it to the `*.workers.dev` address) in front of the
+`*.workers.dev` origin:
 
 1. Point an `A` record for your domain at your server.
 2. Bootstrap nginx **HTTP-only first**. The full site config's `443` block references certificate
@@ -267,21 +329,21 @@ site on the same server.
 
 ### What the proxy front buys you
 
-- **Edge authentication.** `src/middleware/edgeAuth.ts` gates `/webhook/*`, `/api/*` and
-  `/admin/*` on an `X-Edge-Auth` header the proxy sends. When `EDGE_SECRET` is set the Worker also
-  refuses those routes when the header is missing, which closes the direct `*.workers.dev` path —
-  otherwise your Worker stays reachable at that URL by anyone who learns it. When `EDGE_SECRET` is
-  **unset the gate is skipped** (that is what makes a proxy-less deployment work); each route then
-  relies on its own authentication.
-- **Real client IPs.** Requests arrive from the proxy, so to Cloudflare the proxy *is* the client,
-  and anything keyed on `CF-Connecting-IP` collapses every caller into one bucket. The proxy sends
-  the true address as `X-Real-Client-IP`, and `clientIp()` trusts that header **only** when
-  `X-Edge-Auth` matches `EDGE_SECRET` — which is why the secret matters even if you do not need
-  gating.
+Two things, both about trusting the traffic that arrives:
 
-Webhook deliveries are additionally rate-limited to 240/minute per session
-(`WEBHOOK_RATE_LIMIT_PER_MIN` in `src/routes/webhook.ts`), so a leaked webhook URL cannot flood you
-even with a valid secret. Rejections are logged as single-line JSON, visible in `wrangler tail`.
+- **A closed direct path.** The Worker checks an `X-Edge-Auth` header that the proxy sends, and
+  refuses the webhook, API and admin routes when it is missing. That means whoever finds your
+  `*.workers.dev` address cannot call them directly. Without a proxy (`EDGE_SECRET` unset) this
+  check is skipped, which is what makes a proxy-less deployment work; each route then relies on its
+  own authentication.
+- **Real client addresses.** Because requests reach Cloudflare from the proxy, Cloudflare sees the
+  proxy as the caller and any per-caller limit would treat every visitor as one. The proxy sends
+  the true address in `X-Real-Client-IP`, and the Worker trusts that header **only** when the
+  shared secret matches — which is why the secret matters even if you do not need the gating above.
+
+Webhook deliveries are additionally rate-limited to 240/minute per session, so a leaked webhook URL
+cannot flood you even with a valid secret. Rejections are logged as single-line JSON, visible in
+`wrangler tail`.
 
 ---
 
@@ -300,17 +362,16 @@ version runs.
 | `--migrate` | also apply `schema.sql` to the remote database — use whenever the schema changed |
 | `--skip-pull` | deploy the working tree as it is, no git operations |
 
-Two things `deploy.sh` deliberately does not do: **run tests** (the test pool needs workerd, so
-tests are a pre-merge gate on a dev machine) and **touch secrets** (those are set on first run; to
-rotate one use `npx wrangler secret put NAME`).
+Two things `deploy.sh` deliberately does not do: **run tests** (the test runtime lives on a dev
+machine, so tests are a pre-merge gate) and **touch secrets** (those are set on first run; to rotate
+one use `npx wrangler secret put NAME`).
 
 `deploy.sh` discards uncommitted changes, so configuration belongs in git — including the ids the
 wizard patched into `wrangler.jsonc`.
 
-> **Deploy fails with `Queue "..." does not exist`:** `wrangler deploy` auto-creates a queue
-> declared under `queues.producers`/`queues.consumers`, but **not** one referenced only as a
-> `dead_letter_queue` target. Create it first:
-> `npx wrangler queues create <name>-dlq`.
+> **Deploy fails with `Queue "..." does not exist`:** a new queue is created automatically when it
+> is declared as a producer or consumer, but **not** when it is only mentioned as a dead-letter
+> target. Create it first: `npx wrangler queues create <name>-dlq`.
 
 ### Schema changes
 
@@ -329,10 +390,10 @@ destructive one is not.
 
 ## Upgrading from an earlier release
 
-Fresh installs need none of this — `schema.sql` creates everything. These are the column additions
-made after the first release, for a database that already exists. Run them in order, before
-deploying the version that needs them. Each is safe to re-run (D1 reports "duplicate column name"
-and changes nothing).
+**A fresh install needs none of this** — `schema.sql` creates everything. If you already deployed an
+earlier version, your database exists without the newer columns, so run these before deploying the
+version that needs them. They are safe to re-run (the database reports "duplicate column name" and
+changes nothing).
 
 ```bash
 # group messages (per-number opt-in column; new numbers default to groups on)
@@ -360,15 +421,11 @@ npx wrangler d1 execute bitrix_whatsapp --remote --command \
   "ALTER TABLE chat_map ADD COLUMN chat_named INTEGER NOT NULL DEFAULT 0"
 ```
 
-A `DEFAULT` only shapes rows inserted after it exists — stored rows keep their value, and D1 cannot
-change a column's default in place. That is harmless here: the code writes the value explicitly
-when it provisions a number or inserts a chat, so new rows behave correctly on both upgraded and
-fresh databases.
-
-Backfill and de-duplicate the chats that predate phone-based identity (one row per contact):
+Then tidy up the contacts that older versions stored one chat per message address, which today
+split the same person across two rows (the connector now keeps one chat per contact):
 
 ```bash
-# 1. rows created before chat_id existed were keyed by the jid Bitrix itself used
+# 1. rows created before chat_id existed were keyed by the address Bitrix itself used
 npx wrangler d1 execute bitrix_whatsapp --remote --command \
   "UPDATE chat_map SET chat_id = wa_jid WHERE chat_id IS NULL"
 
@@ -389,9 +446,9 @@ npx wrangler d1 execute bitrix_whatsapp --remote --command \
   "SELECT session_id, REPLACE(wa_phone, '+', '') AS digits, COUNT(*) AS n FROM chat_map WHERE wa_phone IS NOT NULL AND wa_phone NOT LIKE '%@g.us' GROUP BY session_id, digits HAVING COUNT(*) > 1"
 ```
 
-The code tolerates a lagging backfill (a `NULL` `chat_id` falls back to the jid), so the deploy and
-these statements do not have to be atomic. The de-duplication only fixes your database: a split
-contact's stale second chat still exists in Bitrix, and an operator should close the dead one.
+The deploy does not have to wait for the tidy-up to finish; the connector tolerates a row it has
+not reached yet. The de-duplication only fixes your database: a split contact's stale second chat
+still exists in Bitrix, and an operator should close the dead one.
 
 ---
 
@@ -417,14 +474,12 @@ git reset --hard <good-sha>
 
 Worth knowing once it is running.
 
-- **Chat identity is per contact, not per WhatsApp address.** WhatsApp addresses the same person
-  under two forms over time (their phone jid `5511…@s.whatsapp.net` and a privacy "LID" jid), and
-  can switch mid-conversation. Bitrix looks up an Open Line chat by connector + line + chat id, so
-  the connector pins one `chat.id` per contact (`chat_map.chat_id`) and resolves every message by
-  phone number. Without that, one contact ends up with two chats and the operator's open window
-  goes quiet.
-- **Media is staged through R2 in both directions.** Inbound attachments are downloaded from
-  WhatsApp, stored in your R2 bucket and served to Bitrix from your own Worker
+- **A chat belongs to a contact, not to a phone address.** WhatsApp addresses the same person
+  under two forms over time and can switch mid-conversation. The connector pins one chat per
+  contact so an operator's open window never goes quiet on a contact that changed address
+  mid-thread.
+- **Attachments are staged through your own storage, in both directions.** Inbound attachments are
+  downloaded from WhatsApp, stored in your R2 bucket and served to Bitrix from your own Worker
   (`/media/inbound/<key>`), so an attachment never depends on a third-party link that expires.
   Staged objects older than 7 days are removed by the hourly cron. If staging fails, the message
   still arrives (the connector falls back to the upstream link) and logs a warning.
@@ -440,18 +495,21 @@ Worth knowing once it is running.
 
 ## Troubleshooting
 
+Still stuck? **info@acp-24.com** — include the symptom, what you expected, and anything the
+deployment printed.
+
 | Symptom | Cause and fix |
 |---|---|
 | `UI bundle missing` from the Worker | `npm run ui:build` did not run, or `public/index.html` is absent — `public/` is git-ignored and built at deploy time |
 | Health check fails but `*.workers.dev` works | DNS or the proxy, not the Worker. Check `nginx -t`, the certificate and the `A` record |
 | `502` from the proxy | Usually `proxy_ssl_server_name` off, or a `Host` header that does not name the `*.workers.dev` origin (Cloudflare routes by `Host`) |
 | `403 FORBIDDEN` from `/api/*`, `/webhook/*`, `/admin/*` | `EDGE_SECRET` set but the proxy's `X-Edge-Auth` header does not match — or you set the secret without a proxy. Unset it, or align both sides |
-| Connector missing from Contact Center after a reinstall | A stale `connector_version` survived the reinstall. Bump `CONNECTOR_VERSION`, deploy, and open the app once |
-| Connector registered but nothing routes, and `wrangler tail` is silent | The connector is deactivated on the Line: open the connector settings widget in Contact Center, pick the number and Save (this re-runs `imconnector.activate`) |
+| Connector missing from Contact Center after a reinstall | The old registered version survived the reinstall. Bump `CONNECTOR_VERSION`, deploy, and open the app once |
+| Connector registered but nothing routes, and `wrangler tail` is silent | The connector is deactivated on the Line: open the connector's settings widget in Contact Center, pick the number and Save (this re-runs `imconnector.activate`) |
 | Operator replies never reach WhatsApp, everything else looks fine | `application_token` is missing — the "Installation event callback" field is wrong. Open the app once to self-heal, or fix the field and reinstall |
 | Portals stop working about an hour after install | `BITRIX_CLIENT_ID` / `BITRIX_CLIENT_SECRET` are wrong, so the OAuth refresh fails |
 | `WRONG_AUTH_TYPE` calling `imconnector.*` | Called without application OAuth context — a portal webhook token cannot read or change connector state |
 | Decrypt errors on every portal | `TOKEN_ENC_KEY` changed. Stored tokens are unrecoverable and every portal must reinstall |
 | Every log line shows the same client IP | `EDGE_SECRET` mismatch between proxy and Worker, or the proxy is not sending the headers |
 | `d1_databases[0]` invalid on deploy | The placeholder database id is still in `wrangler.jsonc` — run `npm run setup` (it patches it) or paste the id from `npx wrangler d1 list` |
-| Old attachments in the chat timeline go dead | Expected only for messages that predate R2 staging; new inbound media is served from your own bucket |
+| Old attachments in the chat timeline go dead | Expected only for messages that predate the current storage; new inbound media is served from your own bucket |

@@ -1,14 +1,201 @@
 # Bitrix24 WhatsApp Connector
 
-A source-available Bitrix24 Market app that bridges WhatsApp (via WasenderAPI) into a native Bitrix24
-Open Channel. Operators answer inside the Contact Center; the app UI only manages connections and
-licensing.
+**What this is.** It connects a WhatsApp number to your Bitrix24 portal, so your team reads and
+answers WhatsApp messages inside Bitrix24's **Contact Center**, next to every other channel.
+WhatsApp conversations arrive as normal Bitrix24 Open Line chats, which means the CRM side is
+already done for you: chats are tied to the contact, and leads or deals get created the way
+Bitrix24 normally creates them. Queues, SLA and reporting work as they do for any other channel,
+and your staff install nothing — there is no separate WhatsApp app for them to open.
+
+You run it on your own Cloudflare account. The connector itself is free and unlimited.
+
+---
+
+## What you need
+
+- **A Bitrix24 portal where you can install an application.** The connector is installed as a
+  Bitrix24 app and shows up in Contact Center. You register the app once, from a (free) Bitrix24
+  partner account.
+- **The WhatsApp number you want to connect.** This is the number your customers already write to;
+  you link it by scanning a QR code with that phone.
+- **A WasenderAPI account** (https://wasenderapi.com). WasenderAPI is the service that actually
+  talks to WhatsApp — it holds the WhatsApp session for your number. This connector is the bridge
+  between that service and Bitrix24, and it uses **your own** account, never anyone else's. From it
+  you need one thing: your API token.
+  [See what to copy and where it goes](#wasenderapi-what-to-take-from-it).
+- **A Cloudflare account.** The connector runs on Cloudflare's hosting, under your account; the
+  free plan is enough. You do not manage any servers.
+- **Node.js 20 or 22** on the computer you deploy from. Node 24 or newer breaks the local test
+  toolchain, so use 20 or 22. This is only needed on the machine that runs the installer and the
+  deploys — not on your Bitrix24 portal.
+
+Optional: your own domain, if you would rather not have the app's address end in `workers.dev` —
+see [DEPLOY.md](DEPLOY.md#step-6-optional--your-own-domain).
+
+### WasenderAPI: what to take from it
+
+**What it is, and why you need one.** WasenderAPI (https://wasenderapi.com) is the service that
+holds the WhatsApp connection for your number and sends and receives its messages. This connector
+does not talk to WhatsApp itself — it is the bridge between WasenderAPI and Bitrix24. You use your
+own WasenderAPI account; the connector never uses anyone else's.
+
+**What to get.** Your API token from the WasenderAPI dashboard — their documentation calls it a
+*personal access token* (or API key). Sign up at https://wasenderapi.com, then copy the token from
+the dashboard's API/token section. Their docs are at https://wasenderapi.com/api-docs.
+
+**Where to put it.** When `npm run setup` runs (step 2 of [Install](#install)) it prompts:
+
+```
+WasenderAPI master token (personal access token):
+```
+
+Paste the token there — it is masked as you type and is never printed. The wizard stores it in
+`.deploy.env` on your computer (readable only by you, and never committed to git) and uploads it to
+your deployment as a secret. Setting things up by hand instead? This is the `WASENDER_MASTER_TOKEN`
+value.
+
+**What the connector does with it.** It uses the token to create a WhatsApp session for each number
+you add — that is what "connecting a number" means here. Each number then gets its own key, which
+the connector stores encrypted in your database; the master token is only used to create and manage
+sessions.
+
+**What to watch.** Your WasenderAPI plan and its limits apply — they control how fast messages can
+be sent, and the connector slows down and retries when it reaches that limit, so a reply may arrive
+later rather than fail. Every number you connect lives in that one WasenderAPI account, so keep the
+token safe and check that your plan covers the volume you expect.
+
+---
+
+## Install
+
+The short version. [DEPLOY.md](DEPLOY.md) is the full step-by-step guide, with the exact form
+fields and everything you may need if something goes wrong.
+
+1. **Clone the repo and install its dependencies:**
+
+   ```bash
+   git clone https://github.com/Barley-pt/bitrix24-whatsapp-connector.git
+   cd bitrix24-whatsapp-connector
+   npm install
+   ```
+
+2. **Run the setup wizard:**
+
+   ```bash
+   npm run setup
+   ```
+
+   One interactive wizard takes a fresh clone all the way to a deployed, working connector: it
+   creates the Cloudflare resources in your account, generates your security keys, patches the
+   config with your account details, applies the database schema, builds the app and puts it
+   online, then health-checks it and prints the three Bitrix24 addresses you need for step 3. It
+   asks for your Cloudflare account details, the public address the app will live at, your Bitrix24
+   client id and secret, and your **WasenderAPI token** — have the last one ready
+   ([where to find it](#wasenderapi-what-to-take-from-it)).
+
+   Placeholders are fine for the Bitrix24 credentials on this first run (you get a running app
+   before your Bitrix24 application exists); you fill them in for real in step 3.
+
+3. **Register the Bitrix24 application** using the three addresses the wizard printed, and install
+   it on your own portal. [DEPLOY.md, step 3](DEPLOY.md#step-3--register-the-bitrix24-application)
+   explains each field. The wrong "Installation event callback" address is the most common mistake,
+   so use the one the wizard printed verbatim.
+
+4. **Install the app on your portal** and open it from the left menu. You should see the setup
+   screen with your portal's domain and an empty list of numbers. In Bitrix24, **Contact Center →
+   Connectors** now offers WhatsApp as a channel.
+
+5. **Connect your WhatsApp number.** In the app, add the number. The connector creates a WhatsApp
+   session under your WasenderAPI account and shows a QR code; scan it from the phone
+   (WhatsApp → Linked devices). Then bind the number to one of your Bitrix24 Open Lines.
+
+Deploys after the first one:
+
+```bash
+./scripts/deploy.sh
+```
+
+---
+
+## After install: is it working?
+
+| Check | What you should see |
+|---|---|
+| Open `https://YOUR_DOMAIN/health` in a browser | a short line starting with `{"ok":true,...}` |
+| Send a WhatsApp message **to** your connected number | it appears in the Open Line chat in Contact Center |
+| Reply from Contact Center | the reply arrives on the phone |
+
+If the first check passes but the others do not, run the state check in the same section of
+[DEPLOY.md](DEPLOY.md#verify-it-works), then work through
+[troubleshooting](DEPLOY.md#troubleshooting).
+
+---
+
+## Questions
+
+Questions, deployment problems and feedback all go to **info@acp-24.com**. If something in these
+docs did not match what you saw, that is worth telling us about.
+
+---
+
+## White-label (optional)
+
+The connector is **free and unlimited**. There is no license to install, no cap on how many numbers
+or conversations you run, and nothing held back. Deploy it and use it, with the "Powered by
+ACP GROUP" note that comes with it.
+
+The one paid option is **white-label**: running the connector for your own customers under your own
+brand. A white-label license removes the ACP GROUP attribution and lets you set the connector name,
+bot name and support link to your own. That specific request goes to **licensing@acp-24.com** — see
+[LICENSE-WHITE-LABEL.md](LICENSE-WHITE-LABEL.md).
+
+---
+
+## Known limitations
+
+The honest list of what does not work yet, so you know before you deploy.
+
+- **Group chats come in for a new number unless you turn them off.** A freshly connected number
+  also receives WhatsApp group messages. You can switch that off for each number in the connector's
+  settings in Contact Center. WhatsApp channels and broadcast messages are always dropped —
+  Bitrix24 has nowhere to put them.
+- **Attachments are copied into your own storage.** Photos, voice notes and documents arriving on
+  WhatsApp are copied the moment they arrive and served to Bitrix24 from your own address, so an
+  attachment keeps working after WasenderAPI's one-hour temporary link expires. The copies are
+  cleaned up after 7 days, long after Bitrix24 has fetched them. If the copy fails, the temporary
+  link is passed on instead — the attachment is never dropped.
+- **Click-to-chat can show "Join chat" instead of Reply/Forward/Close.** If the conversation was
+  already worked on by someone before, Bitrix24 shows a non-member "Join chat" button. The
+  conversation still works; this is a cosmetic quirk we are looking into.
+- **A reply can stay marked "not delivered" although it was.** Bitrix24 confirms delivery only
+  while a message is still being sent, and can decline that confirmation even though the customer
+  received the message. When that happens the reply stays red in Contact Center. The connector
+  retries the confirmation and keeps the window for it small, but it cannot force Bitrix24 to
+  accept it.
+- **White-label is the only feature behind a license.** The connector runs fully and permanently
+  without one. The other plan limits you may find in the licensing configuration are not enforced
+  in this repository: the free connector has no limits.
+
+---
+
+## For developers
+
+The connector is a small TypeScript application. Everything above is the user-facing story; the
+rest is here. Terms are defined once, in passing.
+
+### What it is, technically
+
+A **Cloudflare Worker** (a small serverless program that runs on Cloudflare's edge — no machine of
+yours is involved) written in TypeScript with Hono, backed by a **D1** database (Cloudflare's
+SQLite) named `bitrix_whatsapp`. The UI is React 19 + Tailwind v4, built into a single inlined
+`index.html`. Both directions of traffic pass through **Cloudflare Queues** so a slow upstream
+never blocks delivery.
 
 Two surfaces, one backend:
 
-1. **Native Open Channel** through `imconnector` (connector id `whatsapp_connector`) - CRM, queues,
-   SLA, automatic lead/deal creation, all native.
-2. **App UI** in the Bitrix24 iframe - connection state, number management, licence status. It
+1. **Native Open Channel** registered through `imconnector` (connector id `whatsapp_connector`) —
+   CRM, queues, SLA and automatic lead/deal creation are all Bitrix24's own.
+2. **App UI** in the Bitrix24 iframe — connection state, number management, license status. It
    deliberately does not duplicate the Open Lines inbox.
 
 | | |
@@ -16,7 +203,6 @@ Two surfaces, one backend:
 | Runtime | Cloudflare Worker, TypeScript + Hono |
 | Database | Cloudflare D1 (`bitrix_whatsapp`) |
 | UI | React 19 + Tailwind v4, built to a single inlined `index.html` |
-| License | Free and unlimited; optional white-label license - see [LICENSE-WHITE-LABEL.md](LICENSE-WHITE-LABEL.md) |
 | License | Source-available, see [LICENSE](LICENSE) (not an OSI-approved open-source license) |
 | Public URL | `https://YOUR_DOMAIN` |
 
@@ -24,34 +210,7 @@ Serving does not require the public domain's DNS to be on Cloudflare: an edge/re
 terminates TLS for `https://YOUR_DOMAIN` and reverse-proxies to the `*.workers.dev` URL. Cloudflare
 hosts only the Worker and D1.
 
-## Known limitations
-
-Honest list of what does not work yet, so you know before deploying:
-
-- **Group chats are on per number, with an opt-out.** A new number receives group traffic by
-  default; turn it off per number in the connector settings widget (the app flips Wasender's
-  `ignore_groups` for that session and stops `messages-group.received` from reaching the queue).
-  Channels and broadcast messages have no destination in Bitrix and are always dropped.
-- **Inbound media is re-hosted.** Decrypted media is fetched into the stack's R2 bucket the moment
-  it is decrypted and handed to Bitrix as a `GET /media/inbound/:key` URL on this Worker's own
-  domain, so the attachment outlives Wasender's one-hour temp link. The hourly cron deletes staged
-  objects after 7 days - long past the seconds Bitrix normally takes to fetch. If staging fails the
-  temp URL is passed on instead of dropping the attachment.
-- **Click-to-chat may show "Join chat" instead of Reply/Forward/Close.** When the target chat's
-  Open Line session was already worked (status `WORK`/`ANSWERED` rather than `NEW`), Bitrix shows
-  a non-member "Join chat" button. The conversation still works; this is a UX quirk under
-  investigation.
-- **Licensing is optional.** The app runs fully with no license — free forever with the ACP GROUP
-  attribution. A license key only unlocks white-label mode (your branding instead of ours), see
-  [LICENSE-WHITE-LABEL.md](LICENSE-WHITE-LABEL.md). The separate `LICENSE_ENFORCE` switch (ships
-  off) is for operators running this as a paid service who want plan caps enforced.
-- **A delivery confirmation can still be missed.** Bitrix applies
-  `imconnector.send.status.delivery` only while the message is still "sending" and answers
-  `SUCCESS: true` even when it skips one, so if the confirmation keeps failing until the queue's
-  retries run out, the reply stays red ("not delivered") in the Contact Center although the
-  customer received it. See "Message flow" below for how the connector keeps that window small.
-
-## Message flow
+### Message flow
 
 Both directions go through Cloudflare Queues: `routes/webhook.ts` enqueues WhatsApp traffic on
 `bwac-inbound`, `routes/events.ts` enqueues operator replies (`ONIMCONNECTORMESSAGEADD`) on
@@ -74,9 +233,9 @@ An operator reply (`src/outbound.ts`):
 Every Bitrix and Wasender request gives up after 20 s and is retried through the queue, so one
 hung call cannot hold up other conversations. Each confirmation logs one JSON line,
 `delivery confirmed` (with `sendMs`/`confirmMs` latencies) or `delivery confirm failed`, without
-message text or tokens - see DEPLOY.md, "Operational notes".
+message text or tokens — see DEPLOY.md, "Operational notes".
 
-## Layout
+### Layout
 
 ```
 src/
@@ -101,58 +260,13 @@ src/
     webhook.ts      WasenderAPI inbound webhook, enqueues to bwac-inbound
 ui/                 React SPA, built to public/index.html
 schema.sql          D1 schema (single source of truth, also used by tests)
-test/               vitest running in workerd
+test/               vitest running against a local copy of Cloudflare's runtime
 docs/               distilled WasenderAPI contract notes (docs/wasenderapi.md)
 scripts/            setup.mjs (first-run wizard, `npm run setup`) and deploy.sh (every deploy after)
 deploy/nginx/       nginx site template (deploy/nginx/connector.conf)
 ```
 
-## Two install paths, on purpose
-
-Bitrix24 delivers install data twice, and neither is sufficient alone:
-
-- The **iframe POST** (`/install`, `/`) carries `AUTH_ID`, `REFRESH_ID` and `member_id`
-  immediately, but **no `application_token`**.
-- The **`ONAPPINSTALL` event** (`/events/install`) carries `application_token`, but fires with a
-  delay and is not guaranteed.
-
-`application_token` is what authenticates every later inbound event, so both handlers upsert the
-portal and the token column is `COALESCE`d: the iframe path can never wipe a token the event path
-stored. A forged `ONAPPINSTALL` for a portal we already know is rejected unless its token matches.
-
-## White-label (optional)
-
-The connector is **free and unlimited**: there is no license to install, no cap on numbers, no cap
-on conversations, and no feature held back. Deploy it and use it.
-
-The only commercial option is **white-label** - running it for your own customers under your own
-brand. A white-label license removes the "Powered by ACP GROUP" attribution and lets you set the
-connector name, bot name and support link to your own (`BRAND_*` in `wrangler.jsonc`, resolved by
-`src/brand.ts`). To get one, contact **licensing@acp-24.com**; you receive a license key and the
-licensing endpoint your deployment needs. Paste the key in the app's license panel (**License**
-tab) and the branding switches for that portal.
-
-### Plan controls
-
-The licensing module understands these flags: `max_numbers`, `max_conversations_per_month`,
-`group_conversations`, `message_scheduling`, `white_label`. Only `white_label` does anything out of
-the box. The other four are **not enforced** in this repository - `LICENSE_ENFORCE` ships `false`
-and the free connector has no limits. They exist so that a white-label deployment, or a host
-running this as a paid service for others, can meter its own customers.
-
-## Branding & white-label
-
-Unlicensed / free-tier deployments render a "Powered by ACP GROUP" footer in the UI, linking to
-https://acp-24.com.
-
-Portals whose license envelope carries the `white_label` feature get no forced branding and may
-override the connector and bot display names via the `BRAND_CONNECTOR_NAME`, `BRAND_BOT_NAME` and
-`BRAND_SUPPORT_URL` Worker vars (see `src/brand.ts`).
-
-`resolveBranding()` drives the `branding` field returned by `/api/state`, which is what the UI and
-any integration should read rather than assuming a fixed product name.
-
-## Local development
+### Local development
 
 ```bash
 npm install
@@ -166,48 +280,35 @@ npx wrangler dev
 npm run typecheck && npm test
 ```
 
-Tests run in workerd and need no Cloudflare account. `schema.sql` is imported as text by the test
-helper, so the tested schema is always the deployed schema.
+**The tests need no Cloudflare account.** They run the connector inside a local copy of Cloudflare's
+runtime, emulated on your own machine — nothing remote is touched, and you need no Cloudflare login
+or API token to run them. `schema.sql` is imported as text by the test helper, so the tested schema
+is always the deployed schema.
 
-Two known local-toolchain notes: the installed workerd is older than the configured
-`compatibility_date`, so miniflare logs a fallback warning during tests (harmless, production
-resolves the real date); and `@cloudflare/vitest-pool-workers` is sensitive to the Node major
-version, so use Node 20 or 22 if the pool fails to start.
+Two local-toolchain notes:
 
-## Quickstart
+- The emulated runtime is pinned to a version older than the compatibility date the project
+  declares, so the test run prints lines like
+  `[mf:wrn] The latest compatibility date supported by the installed Cloudflare Workers Runtime is "2024-12-30"`.
+  It is harmless: the run completes normally and all tests pass, and the deployed Worker uses the
+  real date. You can ignore it.
+- `@cloudflare/vitest-pool-workers` is sensitive to the Node major version, so use Node 20 or 22 if
+  the test pool fails to start.
 
-```bash
-npm install
-npm run setup
-```
+### Two install paths, on purpose
 
-One interactive wizard takes a fresh clone all the way to a deployed, healthy Worker: Cloudflare
-preflight (Node 20+, `wrangler whoami`), D1 / R2 / queue creation, cryptographically generated
-secrets (`APP_SECRET`, `TOKEN_ENC_KEY`, `ADMIN_SECRET`), `wrangler.jsonc` patched with your
-account id, public URL, D1 database id and `BITRIX_CLIENT_ID` (with a printed diff), schema
-apply, first deploy, health check - and finally the three Bitrix24 Market URL fields to paste.
+Bitrix24 delivers install data twice, and neither is sufficient alone:
 
-Every value is also a flag or env var (`npm run setup -- --help`), so it is scriptable
-(`--yes`, or `--non-interactive` with env vars). It is idempotent: re-running after a partial
-failure is the normal recovery - existing resources are detected, secrets already in
-`.deploy.env` are reused (regenerating `TOKEN_ENC_KEY` would make stored tokens unrecoverable).
+- The **iframe POST** (`/install`, `/`) carries `AUTH_ID`, `REFRESH_ID` and `member_id`
+  immediately, but **no `application_token`**.
+- The **`ONAPPINSTALL` event** (`/events/install`) carries `application_token`, but fires with a
+  delay and is not guaranteed.
 
-Deploys after the first one:
+`application_token` is what authenticates every later inbound event, so both handlers upsert the
+portal and the token column is `COALESCE`d: the iframe path can never wipe a token the event path
+stored. A forged `ONAPPINSTALL` for a portal we already know is rejected unless its token matches.
 
-```bash
-./scripts/deploy.sh
-```
-
-`public/` is git-ignored and built on the deploy host, so `npm run ui:build` has to run before
-`wrangler deploy` or the Worker has no `index.html` to serve - both `setup` and `deploy.sh` do
-it. The wizard commits nothing: push the patched `wrangler.jsonc`, or the next
-`deploy.sh` (`git reset --hard origin/main`) reverts it and the deploy that follows fails on
-the placeholder ids.
-
-Full runbook - nginx/TLS, schema migrations, the queues/DLQ gotcha, rollback and
-troubleshooting - in [DEPLOY.md](DEPLOY.md).
-
-### Bitrix24 app registration
+### Being a Market app
 
 Registered as a **Market application** in your Bitrix24 partner account. A draft version issues
 working OAuth credentials and installs on your own portal for testing before publication, so
@@ -227,14 +328,31 @@ whenever the connector's name, icon or handler changes or portals keep the old c
 `imconnector.register` requires application OAuth context; calling it with a portal webhook token
 returns `WRONG_AUTH_TYPE`.
 
+### Branding internals
+
+Unlicensed / free-tier deployments render a "Powered by ACP GROUP" footer in the UI, linking to
+https://acp-24.com. Portals whose license envelope carries the `white_label` feature get no forced
+branding and may override the connector and bot display names via the `BRAND_CONNECTOR_NAME`,
+`BRAND_BOT_NAME` and `BRAND_SUPPORT_URL` Worker vars (see `src/brand.ts`); `resolveBranding()`
+drives the `branding` field returned by `/api/state`, which is what the UI and any integration
+should read rather than assuming a fixed product name.
+
+The licensing module understands the flags `max_numbers`, `max_conversations_per_month`,
+`group_conversations`, `message_scheduling` and `white_label`. Only `white_label` does anything out
+of the box; the other four are **not enforced** in this repository (`LICENSE_ENFORCE` ships
+`false`). They exist so that a white-label deployment, or a host running this as a paid service for
+others, can meter its own customers.
+
+---
+
 ## License
 
 Source-available under the [ACP GROUP Source-Available License](LICENSE). This is **not** an
-OSI-approved open-source license: you may use, modify and deploy the Software - including
-commercially and for paying customers - as long as the ACP GROUP attribution shipped with it
+OSI-approved open-source license: you may use, modify and deploy the Software — including
+commercially and for paying customers — as long as the ACP GROUP attribution shipped with it
 (the "Powered by ACP GROUP" notice and the branding defaults in `src/brand.ts`) stays intact.
 
-Removing or replacing that attribution - including via the `BRAND_*` Worker vars - requires a
+Removing or replacing that attribution — including via the `BRAND_*` Worker vars — requires a
 commercial [white-label license](LICENSE-WHITE-LABEL.md). Contact licensing@acp-24.com or
 https://acp-24.com.
 

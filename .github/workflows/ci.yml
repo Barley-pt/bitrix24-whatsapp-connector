@@ -43,8 +43,8 @@ jobs:
 
           # The brand pattern may only appear where the ACP GROUP branding or contact
           # address is shipped on purpose: the branding module and its test, the README,
-          # and the legal/ops docs.
-          brand_allowed='src/brand\.ts|test/brand\.spec\.ts|README\.md|wrangler\.jsonc|LICENSE|LICENSE-WHITE-LABEL\.md|SECURITY\.md'
+          # the deployment guide, and the legal/ops docs.
+          brand_allowed='src/brand\.ts|test/brand\.spec\.ts|README\.md|DEPLOY\.md|wrangler\.jsonc|LICENSE|LICENSE-WHITE-LABEL\.md|SECURITY\.md'
 
           fail=0
 
