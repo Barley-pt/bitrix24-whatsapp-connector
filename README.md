@@ -74,7 +74,7 @@ An operator reply (`src/outbound.ts`):
 Every Bitrix and Wasender request gives up after 20 s and is retried through the queue, so one
 hung call cannot hold up other conversations. Each confirmation logs one JSON line,
 `delivery confirmed` (with `sendMs`/`confirmMs` latencies) or `delivery confirm failed`, without
-message text or tokens - see DEPLOY.md, "Outbound delivery-confirmation rollout".
+message text or tokens - see DEPLOY.md, "Operational notes".
 
 ## Layout
 
