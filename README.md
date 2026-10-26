@@ -132,10 +132,6 @@ connector name, bot name and support link to your own (`BRAND_*` in `wrangler.js
 licensing endpoint your deployment needs. Paste the key in the app's license panel (**License**
 tab) and the branding switches for that portal.
 
-Licenses are Ed25519-signed, one per portal, verified against `LICENSE_PUBLIC_KEY` on every read
-and cached in D1, so an activated portal keeps working offline for a grace window. A revoked or
-expired license falls back to the free-tier attribution.
-
 ### Plan controls
 
 The licensing module understands these flags: `max_numbers`, `max_conversations_per_month`,

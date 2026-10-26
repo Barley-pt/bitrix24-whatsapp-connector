@@ -16,8 +16,7 @@ When a portal's license carries the `white_label` feature, the forced footer dis
 | `BRAND_BOT_NAME` | Display name of the audio-notification bot |
 | `BRAND_SUPPORT_URL` | Support link rendered in the UI |
 
-Nothing else changes: the license stays one-per-portal, Ed25519 signature-verified and cached in
-D1 (see `src/license.ts` and `src/brand.ts`).
+Nothing else changes: the license applies to that one portal.
 
 ## Who it is for
 
@@ -31,8 +30,7 @@ ACP GROUP's - to be what the end customer sees.
 1. a license key bound to your portal, and
 2. the licensing endpoint to set as `LICENSE_SERVER_URL` in `wrangler.jsonc`.
 
-Paste the key into the app's license panel (**License** tab). The portal switches to white-label
-right away; the key is re-checked in the background and keeps working offline for a grace window
-if the endpoint is unreachable.
+Paste the key into the app's license panel (**License** tab) and the portal switches to
+white-label.
 
 See [LICENSE](LICENSE) for the terms that apply without a white-label license.
