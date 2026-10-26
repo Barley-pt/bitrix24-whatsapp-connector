@@ -3,23 +3,22 @@ import type { Env, LicenseEnvelope, LicenseRow, PortalRow } from './types';
 import { fromBase64, nowSec } from './util';
 
 /**
- * Maestro (acp-license-manager) client, Workers-native.
+ * License client for the optional white-label license, Workers-native.
  *
- * This is a port of the companion app's server/lib/license/{verify,licenseClient}.ts (Node,
- * filesystem cache) to Cloudflare Workers (Web Crypto, D1 cache via the `licenses` table - one
- * row per portal, already scoped by portal_id in schema.sql). The signing side lives in
- * acp-license-manager/src/signing.ts; canonicalJson/canonicalPayload below MUST stay byte-for-byte
- * identical to that source (and to the companion app's copy) or every signature fails to verify.
+ * Verifies Ed25519-signed license envelopes with Web Crypto, caching the verified envelope in
+ * D1's `licenses` table (one row per portal). canonicalJson/canonicalPayload below MUST stay
+ * byte-for-byte identical to the signing service's own implementation, or every signature fails
+ * to verify.
  *
- * Model: one product per app (`env.LICENSE_PRODUCT`, "wa-connector" for this app - see
- * wrangler.jsonc), many licenses under it, one activation per portal. Fail-closed: no key, no
- * envelope, or a signature that does not verify all mean unlicensed.
+ * Model: one product per app (`env.LICENSE_PRODUCT` - see wrangler.jsonc), many licenses under
+ * it, one activation per portal. Fail-closed: no key, no envelope, or a signature that does not
+ * verify all mean unlicensed.
  */
 
-const STALE_AFTER_MS = 12 * 60 * 60 * 1000; // Maestro's recommended re-validate cadence.
+const STALE_AFTER_MS = 12 * 60 * 60 * 1000; // Recommended re-validate cadence.
 const REQUEST_TIMEOUT_MS = 10_000;
 
-/* ---------- canonical signing (must match acp-license-manager/src/signing.ts) ---------- */
+/* ---------- canonical signing (must match the signing service's implementation) ---------- */
 
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value ?? null);
@@ -133,7 +132,7 @@ async function storeEnvelope(env: Env, portalId: string, envelope: LicenseEnvelo
 
 /**
  * An authoritative negative (REVOKED / EXPIRED / INVALID_KEY / PRODUCT_MISMATCH) drops the cached
- * envelope immediately - no grace period for those, mirroring the companion app's clearCache.
+ * envelope immediately - no grace period for those.
  * INVALID_KEY/PRODUCT_MISMATCH also drop the stored key itself (it does not belong to this
  * portal); REVOKED/EXPIRED keep it so an admin can see what was revoked/expired.
  */
@@ -160,14 +159,14 @@ async function storeFailure(
 
 /* ---------- transport ---------- */
 
-interface MaestroResponse {
+interface LicenseServerResponse {
   valid?: boolean;
   error?: string;
   message?: string;
   [key: string]: unknown;
 }
 
-async function post(env: Env, pathname: string, body: Record<string, unknown>): Promise<MaestroResponse> {
+async function post(env: Env, pathname: string, body: Record<string, unknown>): Promise<LicenseServerResponse> {
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -177,13 +176,13 @@ async function post(env: Env, pathname: string, body: Record<string, unknown>): 
       body: JSON.stringify(body),
       signal: ac.signal,
     });
-    return (await res.json().catch(() => ({}))) as MaestroResponse;
+    return (await res.json().catch(() => ({}))) as LicenseServerResponse;
   } finally {
     clearTimeout(t);
   }
 }
 
-/** instance_id is informational on Maestro's side (analytics on the activations row) - the
+/** instance_id is informational upstream (analytics on the activations row) - the
  * portal's own stable D1 id is a fine, zero-storage choice. */
 function baseBody(env: Env, portal: PortalRow, licenseKey: string): Record<string, unknown> {
   return {
@@ -206,7 +205,7 @@ export interface LicenseResult {
 async function handleResponse(
   env: Env,
   portal: PortalRow,
-  json: MaestroResponse,
+  json: LicenseServerResponse,
   licenseKeyAttempted: string,
 ): Promise<LicenseResult> {
   if (json.valid) {
@@ -264,7 +263,7 @@ export async function deactivate(env: Env, portal: PortalRow): Promise<void> {
     try {
       await post(env, '/v1/deactivate', baseBody(env, portal, row.license_key));
     } catch {
-      /* best effort - the seat can also be reclaimed server-side via the Maestro admin */
+      /* best effort - the seat can also be reclaimed server-side */
     }
   }
   await env.DB.prepare('DELETE FROM licenses WHERE portal_id = ?').bind(portal.id).run();
@@ -325,10 +324,9 @@ const UNLICENSED: Omit<LicenseSnapshot, 'hasKey' | 'status' | 'lastCheckedAt'> =
 };
 
 /**
- * Cache-only, synchronous-cost read: re-verifies the stored envelope's signature (never trusts D1
- * blindly - defense in depth, same reasoning as the companion app re-verifying its disk cache on
- * load) and recomputes expiry/grace from it. Does not hit the network; call ensureFresh first if a
- * refresh is warranted.
+ * Cache-only, synchronous-cost read: re-verifies the stored envelope's signature (never trusts
+ * what is in D1 blindly) and recomputes expiry/grace from it. Does not hit the network; call
+ * ensureFresh first if a refresh is warranted.
  */
 export async function snapshot(env: Env, portal: PortalRow): Promise<LicenseSnapshot> {
   const row = await getRow(env, portal.id);

@@ -818,8 +818,8 @@ async function main() {
   info('Paste the client secret from the version card into .deploy.env');
   info('(BITRIX_CLIENT_SECRET) if you left it as a placeholder, then re-run');
   info('`npm run setup` - OAuth refresh dies about an hour after install without it.');
-  info('Want your own branding? App UI → License tab issues a 14-day');
-  info('white-label trial key.');
+  info('Want your own branding? Contact licensing@acp-24.com for a');
+  info('white-label license, then paste the key in the app UI → License tab.');
   console.log(`${bold(bar)}`);
 
   if (!healthy) {

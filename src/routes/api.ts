@@ -83,7 +83,7 @@ async function licenseFor(c: { env: Env }, portal: PortalRow) {
     conversationsThisMonth: used,
     // Gates POST /api/sessions/:id/group-messages below - a portal can only turn groups on for a
     // number if its plan carries this feature. message_scheduling has no implementation yet;
-    // surfaced anyway so Maestro's per-tier default_features and the customer Features view can
+    // surfaced anyway so the licensing service's per-tier defaults and the customer features view can
     // already carry the flag ahead of the code landing.
     groupConversationsAllowed: f.group_conversations === true,
     messageSchedulingAllowed: f.message_scheduling === true,

@@ -16,7 +16,7 @@ Two surfaces, one backend:
 | Runtime | Cloudflare Worker, TypeScript + Hono |
 | Database | Cloudflare D1 (`bitrix_whatsapp`) |
 | UI | React 19 + Tailwind v4, built to a single inlined `index.html` |
-| Licensing | [Maestro](https://maestro.acp-24.com), product slug `wa-connector` |
+| License | Free and unlimited; optional white-label license - see [LICENSE-WHITE-LABEL.md](LICENSE-WHITE-LABEL.md) |
 | License | Source-available, see [LICENSE](LICENSE) (not an OSI-approved open-source license) |
 | Public URL | `https://YOUR_DOMAIN` |
 
@@ -120,34 +120,29 @@ Bitrix24 delivers install data twice, and neither is sufficient alone:
 portal and the token column is `COALESCE`d: the iframe path can never wipe a token the event path
 stored. A forged `ONAPPINSTALL` for a portal we already know is rejected unless its token matches.
 
-## Licensing
+## White-label (optional)
 
-Licensing is served by [Maestro](https://maestro.acp-24.com), product slug `wa-connector`.
-One license per portal, cached in D1's `licenses` table: the signed envelope is stored verbatim
-and re-verified against `LICENSE_PUBLIC_KEY` on every read, never trusted blindly.
-`src/license.ts` verifies Ed25519 signatures with Web Crypto, with a D1-backed cache and an
-offline grace window.
+The connector is **free and unlimited**: there is no license to install, no cap on numbers, no cap
+on conversations, and no feature held back. Deploy it and use it.
 
-Operators bind a key from the app UI's license panel (self-serve, `POST /api/license/activate`),
-or in bulk via the admin route `POST /admin/portals/:domain/license`
-(`X-Admin-Key: $ADMIN_SECRET`, `{"licenseKey": "..."}`). A 14-day white-label trial key is
-issued self-serve and unlocks the same `white_label` feature as a paid license — see
-[LICENSE-WHITE-LABEL.md](LICENSE-WHITE-LABEL.md). The same router exposes `GET` (snapshot),
-`POST .../revalidate`, and `DELETE` (release the seat). A cron trigger (`wrangler.jsonc`'s
-`triggers.crons`) revalidates every portal with a key on file roughly hourly; `ensureFresh`
-skips anything still inside its 12h staleness window, so most ticks are cheap no-ops.
+The only commercial option is **white-label** - running it for your own customers under your own
+brand. A white-label license removes the "Powered by ACP GROUP" attribution and lets you set the
+connector name, bot name and support link to your own (`BRAND_*` in `wrangler.jsonc`, resolved by
+`src/brand.ts`). To get one, contact **licensing@acp-24.com**; you receive a license key and the
+licensing endpoint your deployment needs. Paste the key in the app's license panel (**License**
+tab) and the branding switches for that portal.
 
-Features read from the signed envelope's `features` JSON:
+Licenses are Ed25519-signed, one per portal, verified against `LICENSE_PUBLIC_KEY` on every read
+and cached in D1, so an activated portal keeps working offline for a grace window. A revoked or
+expired license falls back to the free-tier attribution.
 
-| Key | Enforced where |
-|---|---|
-| `max_numbers` | `POST /api/sessions` - blocks provisioning a new WhatsApp number past the seat count |
-| `max_conversations_per_month` | `inbound.ts` - blocks a **new** WhatsApp conversation (no existing `chat_map` row) once the UTC-month counter (`usage_counters` table) hits the cap; an already-open conversation is never interrupted |
-| `group_conversations` | `POST /api/sessions/:id/group-messages` - blocks turning groups on for a number when enforcement is on and the plan lacks the feature; new numbers still ship with groups on per number (the column default is 1), so this gate only guards the explicit opt-in path |
-| `message_scheduling` | Not enforced - the feature itself does not exist yet |
-| `white_label` | Not a route-level gate - it selects the branding `resolveBranding()` renders (see **Branding & white-label** below): when true, the forced free-tier footer is dropped and the `BRAND_*` overrides apply |
+### Plan controls
 
-All enforcement is inert until `LICENSE_ENFORCE=true` in `wrangler.jsonc` (ships `false`).
+The licensing module understands these flags: `max_numbers`, `max_conversations_per_month`,
+`group_conversations`, `message_scheduling`, `white_label`. Only `white_label` does anything out of
+the box. The other four are **not enforced** in this repository - `LICENSE_ENFORCE` ships `false`
+and the free connector has no limits. They exist so that a white-label deployment, or a host
+running this as a paid service for others, can meter its own customers.
 
 ## Branding & white-label
 
@@ -244,8 +239,8 @@ commercially and for paying customers - as long as the ACP GROUP attribution shi
 (the "Powered by ACP GROUP" notice and the branding defaults in `src/brand.ts`) stays intact.
 
 Removing or replacing that attribution - including via the `BRAND_*` Worker vars - requires a
-commercial [white-label license](LICENSE-WHITE-LABEL.md); a 14-day white-label trial key is
-self-served from the app UI. Contact licensing@acp-24.com or https://acp-24.com.
+commercial [white-label license](LICENSE-WHITE-LABEL.md). Contact licensing@acp-24.com or
+https://acp-24.com.
 
 No trademark rights in the ACP marks are granted. The Software is provided as-is, with no
 warranty and no liability. See [LICENSE](LICENSE) for the full terms and [SECURITY.md](SECURITY.md)

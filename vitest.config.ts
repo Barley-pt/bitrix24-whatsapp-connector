@@ -42,7 +42,7 @@ export default defineWorkersConfig({
             APP_SECRET: 'test-app-secret',
             // base64 of 32 bytes
             TOKEN_ENC_KEY: 'K5xN2vQ8sYb1mZ3pR7tW9cF4hJ6kL0nA2dG5jH8uP1s=',
-            LICENSE_SERVER_URL: 'https://maestro.test',
+            LICENSE_SERVER_URL: 'https://license.test',
             LICENSE_PRODUCT: 'wa-connector',
             // Deliberately not a real key: it imports as null, so anything signed by it fails
             // closed. Tests that need a verifiable license sign a fixture at test time with a

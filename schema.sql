@@ -26,9 +26,9 @@ CREATE TABLE IF NOT EXISTS portals (
 
 CREATE INDEX IF NOT EXISTS idx_portals_domain ON portals(bitrix_domain);
 
--- Cached Maestro license envelope. One row per portal.
+-- Cached license envelope. One row per portal.
 -- The signed envelope is kept verbatim so the Ed25519 signature can be re-verified
--- offline during a Maestro outage (grace window = signed_at + grace_days).
+-- offline during a licensing-endpoint outage (grace window = signed_at + grace_days).
 CREATE TABLE IF NOT EXISTS licenses (
   portal_id       TEXT PRIMARY KEY REFERENCES portals(id) ON DELETE CASCADE,
   license_key     TEXT,
@@ -216,7 +216,7 @@ CREATE INDEX IF NOT EXISTS idx_msg_session_created ON message_log(session_id, cr
 -- Admin panel (phase 7) filters failures across tenants.
 CREATE INDEX IF NOT EXISTS idx_msg_failed ON message_log(status, created_at) WHERE status = 'failed';
 
--- Monthly usage counters per portal, keyed by UTC calendar month ('YYYY-MM'). Backs Maestro's
+-- Monthly usage counters per portal, keyed by UTC calendar month ('YYYY-MM'). Backs the
 -- max_conversations_per_month feature. A "conversation" is counted once, the moment its first
 -- chat_map row is created (see src/usage.ts, src/inbound.ts) - continuing an existing thread never
 -- re-counts, mirroring how max_numbers only gates provisioning a *new* session.

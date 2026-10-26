@@ -166,9 +166,9 @@ export interface PortalRow {
 }
 
 /**
- * A Maestro (acp-license-manager) signed license envelope, verbatim from
- * /v1/activate|validate|trial. Shape and field set must stay identical to
- * acp-license-manager's LicenseEnvelope - src/license.ts's canonicalPayload
+ * A signed license envelope, verbatim from the licensing endpoint.
+ * Shape and field set must stay identical to the signing service's
+ * LicenseEnvelope - src/license.ts's canonicalPayload
  * signs exactly these 11 fields (sorted), so drifting either side silently
  * breaks every signature check.
  */

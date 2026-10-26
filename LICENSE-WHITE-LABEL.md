@@ -26,11 +26,13 @@ ACP GROUP's - to be what the end customer sees.
 
 ## How to get it
 
-- **Try it first**: a 14-day white-label trial key, self-served from the app UI - open the app's
-  license panel, paste the key, and the portal switches to white label for the trial period.
-- **Buy it, or ask anything**: licensing@acp-24.com or https://acp-24.com
+**Contact licensing@acp-24.com** (or https://acp-24.com). You will receive:
 
-Licensing is handled by [Maestro](https://maestro.acp-24.com), the license server this connector
-talks to (`LICENSE_SERVER_URL` in `wrangler.jsonc`, product slug `wa-connector`).
+1. a license key bound to your portal, and
+2. the licensing endpoint to set as `LICENSE_SERVER_URL` in `wrangler.jsonc`.
+
+Paste the key into the app's license panel (**License** tab). The portal switches to white-label
+right away; the key is re-checked in the background and keeps working offline for a grace window
+if the endpoint is unreachable.
 
 See [LICENSE](LICENSE) for the terms that apply without a white-label license.

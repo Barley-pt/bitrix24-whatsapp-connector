@@ -5,13 +5,12 @@ import type { Env, PortalRow } from '../types';
 import { timingSafeEqual } from '../util';
 
 /**
- * Operator-only license administration. There is no self-serve purchase flow yet, so the vendor
- * binds a Maestro license key to a customer's portal here after issuing/selling it - the same
- * shape as the Companion App's /admin Licenses tab, cut down to what this app needs. Full
- * cross-tenant admin (phase 7) is separate, larger scope.
+ * Operator-only license administration. There is no self-serve purchase flow, so a license key
+ * is bound to a portal here after it has been issued/sold - the operator-side counterpart to the
+ * app UI's self-service activation.
  *
- * Auth: shared secret via X-Admin-Key, like the Companion App's ADMIN_SECRET. Not a
- * Bitrix session - this never runs inside a portal's iframe.
+ * Auth: shared secret via X-Admin-Key (`ADMIN_SECRET`). Not a Bitrix session - this never runs
+ * inside a portal's iframe.
  */
 export const adminRoutes = new Hono<{ Bindings: Env }>();
 
@@ -35,7 +34,7 @@ adminRoutes.get('/admin/portals/:domain/license', async (c) => {
   return c.json(await license.snapshot(c.env, portal));
 });
 
-/** Bind (or replace) a purchased license key on this portal. Activates it against Maestro. */
+/** Bind (or replace) a purchased license key on this portal. Activates it upstream. */
 adminRoutes.post('/admin/portals/:domain/license', async (c) => {
   const portal = await resolvePortal(c);
   if (!portal) return c.json({ error: 'NOT_FOUND' }, 404);
@@ -48,7 +47,7 @@ adminRoutes.post('/admin/portals/:domain/license', async (c) => {
   return c.json(result, result.ok ? 200 : 400);
 });
 
-/** Force a re-check against Maestro now, rather than waiting for the 12h cron cadence. */
+/** Force a re-check now, rather than waiting for the 12h cron cadence. */
 adminRoutes.post('/admin/portals/:domain/license/revalidate', async (c) => {
   const portal = await resolvePortal(c);
   if (!portal) return c.json({ error: 'NOT_FOUND' }, 404);

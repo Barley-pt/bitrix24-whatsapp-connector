@@ -124,7 +124,7 @@ export function licenseFixture(overrides: Partial<LicenseEnvelope> = {}): Omit<L
   };
 }
 
-/** Sign an unsigned fixture exactly the way acp-license-manager does (same canonical payload). */
+/** Sign an unsigned fixture exactly the way the signing service does (same canonical payload). */
 export async function signLicenseEnvelope(
   privateKey: CryptoKey,
   envelope: Omit<LicenseEnvelope, 'signature'>,

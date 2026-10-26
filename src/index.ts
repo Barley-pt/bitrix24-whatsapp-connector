@@ -173,7 +173,7 @@ async function processQueueMessage(
   }
 }
 
-/** Cron trigger (wrangler.jsonc's triggers.crons) - revalidates every portal with a Maestro
+/** Cron trigger (wrangler.jsonc's triggers.crons) - revalidates every portal with a license
  * license key on file (ensureFresh inside refreshAllPortals skips any portal whose cache is still
  * within the 12h staleness window, so most runs are cheap no-ops) and expires re-hosted inbound
  * media in R2 that Bitrix never fetched (media.ts, cleanupStagedMedia - objects older than

@@ -13,7 +13,7 @@ import {
   signLicenseEnvelope,
 } from './helpers';
 
-const MAESTRO = 'https://maestro.test';
+const LICENSE_SERVER = 'https://license.test';
 const PRODUCT = 'wa-connector'; // matches vitest.config.ts's LICENSE_PRODUCT
 
 async function seedPortal(memberId = 'member-1') {
@@ -72,7 +72,7 @@ beforeAll(async () => {
 beforeEach(resetDb);
 afterEach(() => fetchMock.assertNoPendingInterceptors());
 
-describe('canonical signing (must match acp-license-manager)', () => {
+describe('canonical signing (must match the signing service)', () => {
   it('verifies a correctly signed envelope', async () => {
     const { privateKey, publicKeyB64 } = await generateLicenseKeypair();
     const envelope = await signLicenseEnvelope(privateKey, licenseFixture());
@@ -151,7 +151,7 @@ describe('/admin/portals/:domain/license', () => {
     const envelope = await signLicenseEnvelope(privateKey, licenseFixture());
     let sentBody: Record<string, unknown> = {};
     fetchMock
-      .get(MAESTRO)
+      .get(LICENSE_SERVER)
       .intercept({
         path: '/v1/activate',
         method: 'POST',
@@ -192,7 +192,7 @@ describe('/admin/portals/:domain/license', () => {
     const { privateKey } = await generateLicenseKeypair();
     const envelope = await signLicenseEnvelope(privateKey, licenseFixture());
 
-    fetchMock.get(MAESTRO).intercept({ path: '/v1/activate', method: 'POST' }).reply(200, envelope);
+    fetchMock.get(LICENSE_SERVER).intercept({ path: '/v1/activate', method: 'POST' }).reply(200, envelope);
 
     const res = await adminCall('/admin/portals/member-1.bitrix24.com/license', {
       method: 'POST',
@@ -211,16 +211,16 @@ describe('/admin/portals/:domain/license', () => {
 
     // First, a real activation.
     const envelope = await signLicenseEnvelope(privateKey, licenseFixture());
-    fetchMock.get(MAESTRO).intercept({ path: '/v1/activate', method: 'POST' }).reply(200, envelope);
+    fetchMock.get(LICENSE_SERVER).intercept({ path: '/v1/activate', method: 'POST' }).reply(200, envelope);
     await adminCall('/admin/portals/member-1.bitrix24.com/license', {
       method: 'POST',
       body: JSON.stringify({ licenseKey: 'ACP-TEST-TEST-TEST-TEST' }),
     });
     expect((await licenseRow(portal.id))?.envelope).not.toBeNull();
 
-    // Then Maestro revokes it; a revalidate must drop the cache immediately (no grace).
+    // Then the license is revoked upstream; a revalidate must drop the cache (no grace).
     fetchMock
-      .get(MAESTRO)
+      .get(LICENSE_SERVER)
       .intercept({ path: '/v1/validate', method: 'POST' })
       .reply(403, { valid: false, error: 'REVOKED', message: 'License revoked.' });
 

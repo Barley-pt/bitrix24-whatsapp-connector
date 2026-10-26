@@ -252,7 +252,7 @@ environments and the test suite stay in step.
 ./scripts/deploy.sh --migrate
 ```
 
-### Phase 5 rollout (Maestro licensing)
+### Licensing rollout (optional)
 
 Three things this phase added, none of them automatic on a plain `deploy.sh`:
 

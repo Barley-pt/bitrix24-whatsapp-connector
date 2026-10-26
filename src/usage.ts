@@ -1,7 +1,8 @@
 import type { Env } from './types';
 
 /**
- * Monthly conversation counters, backing Maestro's `max_conversations_per_month` feature.
+ * Monthly conversation counters, backing the `max_conversations_per_month` plan control (not
+ * enforced in this build - see the README).
  * A "conversation" is counted once, the instant its first chat_map row is created (see
  * inbound.ts) - an existing thread continuing never re-counts, mirroring how max_numbers only
  * gates provisioning a brand new session, not using an existing one.

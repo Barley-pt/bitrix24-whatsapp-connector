@@ -38,12 +38,12 @@ jobs:
           # Patterns are bracket-escaped so this workflow file does not trip its own gate:
           # the escaped form still matches the target string, but the literal pattern text
           # in this file does not.
-          leak='94[.]46[.]|relay[.]acp|ga[r]cia|A[C]P[-]QY5Z|b24[-]ynumvs|el[y]zee|app[.]6a73920b|Messa[g]e2Ga[r]cia|acp[z]ap|jorge[-]f[-]orge'
+          leak='94[.]46[.]|relay[.]acp|ga[r]cia|A[C]P[-]QY5Z|b24[-]ynumvs|el[y]zee|app[.]6a73920b|Messa[g]e2Ga[r]cia|acp[z]ap|jorge[-]f[-]orge|mae[s]tro|acp[-]license[-]manager'
           brand='a[c]p[-]24'
 
           # The brand pattern may only appear where the ACP GROUP branding or contact
-          # address is shipped on purpose: the branding module and its test, the README's branding/licensing sections,
-          # the Maestro URL in wrangler.jsonc, and the legal/ops docs.
+          # address is shipped on purpose: the branding module and its test, the README,
+          # and the legal/ops docs.
           brand_allowed='src/brand\.ts|test/brand\.spec\.ts|README\.md|wrangler\.jsonc|LICENSE|LICENSE-WHITE-LABEL\.md|SECURITY\.md'
 
           fail=0
