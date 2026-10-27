@@ -294,8 +294,7 @@ eventRoutes.post('/events/message-add', async (c) => {
     // Never forward a system message/whisper back to the customer's WhatsApp. The connector publishes
     // app-sent (phone-typed) messages with im.message.add + SYSTEM: 'Y' and a SYSTEM MESSAGE:
     // prefix (inbound.ts's whisperPayload), and Bitrix can echo that back here. Both signals are
-    // checked - the flag is documented but the prefix holds even if a payload drops it - exactly
-    // like Pigeon's /events/message-add.
+    // checked - the flag is documented but the prefix holds even if a payload drops it.
     if (item.message?.system === 'Y' || text.startsWith(WHISPER_PREFIX)) continue;
 
     const files = parseFiles(item.message);

@@ -628,7 +628,7 @@ async function processAppSentMessage(
   const chatId = resolveChatId(chat);
 
   // A Bitrix dialog already exists for this contact: publish the phone-typed message as a SYSTEM
-  // message (a whisper) into it, exactly like Pigeon's mirror. imconnector.send.messages has no
+  // message (a whisper) into it. imconnector.send.messages has no
   // system flag at all - using it here was the old "hack" that made the text look like the
   // CUSTOMER had written it. im.message.add cannot attach files, so the staged R2 links are
   // named in the text instead; the media still reaches Bitrix once, via buildFiles.

@@ -38,7 +38,7 @@ jobs:
           # Patterns are bracket-escaped so this workflow file does not trip its own gate:
           # the escaped form still matches the target string, but the literal pattern text
           # in this file does not.
-          leak='94[.]46[.]|relay[.]acp|ga[r]cia|A[C]P[-]QY5Z|b24[-]ynumvs|el[y]zee|app[.]6a73920b|Messa[g]e2Ga[r]cia|acp[z]ap|jorge[-]f[-]orge|mae[s]tro|acp[-]license[-]manager'
+          leak='94[.]46[.]|relay[.]acp|ga[r]cia|A[C]P[-]QY5Z|b24[-]ynumvs|el[y]zee|app[.]6a73920b|Messa[g]e2Ga[r]cia|acp[z]ap|jorge[-]f[-]orge|mae[s]tro|acp[-]license[-]manager|pige[o]n|waba[-]line'
           brand='a[c]p[-]24'
 
           # The brand pattern may only appear where the ACP GROUP branding or contact
