@@ -8,6 +8,7 @@ import {
 } from '../connector';
 import { decrypt } from '../crypto';
 import { getPortalByMemberId, markUninstalled, updateApplicationToken, upsertPortal } from '../db';
+import { WHISPER_PREFIX } from '../inbound';
 import type { BitrixEventAuth, Env, OutboundFile, PortalRow } from '../types';
 import { parsePhpFormData, stripBBCode, timingSafeEqual } from '../util';
 
@@ -239,7 +240,13 @@ interface MessageAddEventItem {
   im?: { chat_id?: string; message_id?: string };
   // parsePhpFormData turns files[0][link] into a plain object keyed by numeric string, never an
   // array - the same shape as MESSAGES itself.
-  message?: { user_id?: string; text?: string; files?: Record<string, MessageAddEventFile> };
+  message?: {
+    user_id?: string;
+    text?: string;
+    /** 'Y' on a system message (im.message.add's SYSTEM field). */
+    system?: string;
+    files?: Record<string, MessageAddEventFile>;
+  };
   chat?: { id?: string };
 }
 
@@ -283,6 +290,14 @@ eventRoutes.post('/events/message-add', async (c) => {
   for (const item of Object.values(data.MESSAGES)) {
     const waJid = item.chat?.id;
     const text = item.message?.text ?? '';
+
+    // Never forward a system message/whisper back to the customer's WhatsApp. The connector publishes
+    // app-sent (phone-typed) messages with im.message.add + SYSTEM: 'Y' and a SYSTEM MESSAGE:
+    // prefix (inbound.ts's whisperPayload), and Bitrix can echo that back here. Both signals are
+    // checked - the flag is documented but the prefix holds even if a payload drops it - exactly
+    // like Pigeon's /events/message-add.
+    if (item.message?.system === 'Y' || text.startsWith(WHISPER_PREFIX)) continue;
+
     const files = parseFiles(item.message);
     const bitrixChatId = Number(item.im?.chat_id);
     const bitrixMessageId = Number(item.im?.message_id);

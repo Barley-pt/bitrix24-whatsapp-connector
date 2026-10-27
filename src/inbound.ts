@@ -44,6 +44,25 @@ interface SendMessagesResult {
   };
 }
 
+/**
+ * The one definition of the system-message prefix, shared with crm.ts's chat-opened notice.
+ * im.message.add's SYSTEM: 'Y' is the documented flag (imconnector.send.messages has no such
+ * field at all); the prefix is the second guard, because /events/message-add refuses to forward
+ * anything that starts with it even if Bitrix ever ignored the flag.
+ */
+export const WHISPER_PREFIX = 'SYSTEM MESSAGE: ';
+
+/**
+ * A message posted into the existing Bitrix chat with im.message.add - never delivered to the
+ * customer's WhatsApp, unlike an ordinary (non-system) message from the operator side.
+ */
+export function whisperPayload(
+  bitrixChatId: number | string,
+  text: string,
+): Record<string, unknown> {
+  return { DIALOG_ID: `chat${bitrixChatId}`, MESSAGE: `${WHISPER_PREFIX}${text}`, SYSTEM: 'Y' };
+}
+
 /** wa_jid ending in @g.us is a WhatsApp group - see schema.sql's wa_phone comment. */
 const isGroupJid = (waJid: string): boolean => waJid.endsWith('@g.us');
 
@@ -339,6 +358,8 @@ export interface ContactChatRow {
   wa_picture: string | null;
   chat_named: number | null;
   bitrix_line_id: number | null;
+  /** Bitrix's internal chat id (`chatXXX` without the prefix); NULL until a dialog exists. */
+  bitrix_chat_id: number | null;
 }
 
 /**
@@ -374,7 +395,7 @@ export function findContactChat(
 ): Promise<ContactChatRow | null> {
   const match = contactMatch(waJid, phones);
   return env.DB.prepare(
-    `SELECT id, chat_id, wa_jid, wa_phone, wa_name, wa_picture, chat_named, bitrix_line_id FROM chat_map
+    `SELECT id, chat_id, wa_jid, wa_phone, wa_name, wa_picture, chat_named, bitrix_line_id, bitrix_chat_id FROM chat_map
      WHERE session_id = ? AND ${match.sql}
      ORDER BY last_message_at DESC
      LIMIT 1`,
@@ -529,8 +550,10 @@ async function processInboundNote(env: Env, msg: InboundNoteQueueMessage): Promi
 
 /**
  * A messages.upsert delivery with fromMe: true - either a message genuinely typed on the
- * business phone's WhatsApp app (post to Bitrix, labeled SENT FROM MOBILE) or Wasender's own echo
- * of a message the connector just sent through outbound.ts (recognize it and skip). Both share one
+ * business phone's WhatsApp app (whispered into the contact's Bitrix chat as a SYSTEM message,
+ * labeled SENT FROM MOBILE, or - only when that chat does not exist yet - posted through
+ * imconnector.send.messages to create it) or Wasender's own echo of a message the connector just sent
+ * through outbound.ts (recognize it and skip). Both share one
  * idempotency claim keyed by the WhatsApp message id, taken before the echo check runs, so a
  * webhook redelivery can never re-run the match against an already-claimed outbound row or post
  * to Bitrix twice - see claimMessageLog.
@@ -604,6 +627,36 @@ async function processAppSentMessage(
   // The contact's one chat, whichever jid this upsert came in under - see processInboundMessage.
   const chatId = resolveChatId(chat);
 
+  // A Bitrix dialog already exists for this contact: publish the phone-typed message as a SYSTEM
+  // message (a whisper) into it, exactly like Pigeon's mirror. imconnector.send.messages has no
+  // system flag at all - using it here was the old "hack" that made the text look like the
+  // CUSTOMER had written it. im.message.add cannot attach files, so the staged R2 links are
+  // named in the text instead; the media still reaches Bitrix once, via buildFiles.
+  const bitrixChatId = Number(chat.bitrix_chat_id);
+  if (Number.isInteger(bitrixChatId) && bitrixChatId > 0) {
+    const whisper = [
+      label,
+      ...files.map((file) => `Attachment: ${file.name} - ${file.url}`),
+    ].join('\n');
+    // No SUCCESS envelope here: im.message.add answers with the new message id (or true/false),
+    // and a genuine failure arrives as a thrown BitrixError so the queue retries as usual.
+    await callMethod<number | boolean>(env, portal, 'im.message.add', whisperPayload(bitrixChatId, whisper));
+    await env.DB.prepare('UPDATE chat_map SET last_message_at = ? WHERE id = ?')
+      .bind(nowSec(), chat.id)
+      .run();
+    await env.DB.prepare("UPDATE message_log SET status = 'sent' WHERE id = ?").bind(claim.id).run();
+
+    // Same best-effort rename as the customer path: a phone-started conversation may still be
+    // showing Bitrix's default title.
+    await maybeRenameChat(env, portal, session, chat, chat.wa_name ?? undefined);
+    return;
+  }
+
+  // FALLBACK, deliberately kept: there is no Bitrix dialog yet (no chat_map.bitrix_chat_id), so
+  // there is nothing to whisper into. imconnector.send.messages is the only call that can create
+  // the chat/session in the first place, so the message is posted the old way - labelled
+  // [SENT FROM MOBILE] and with disable_crm - purely to open the dialog. The next phone-typed
+  // message for this contact takes the whisper branch above. Never drop the message instead.
   const result = await callMethod<SendMessagesResult>(env, portal, 'imconnector.send.messages', {
     CONNECTOR: env.CONNECTOR_ID,
     LINE: session.bitrix_line_id,
@@ -675,7 +728,7 @@ async function processAppSentMessage(
  * a much tighter window. That case is not hypothetical: an operator sending a photo with no
  * comment produces exactly it, since outbound.ts records the caption as echo_text and there is no
  * caption. Without it, every image sent from the Open Line comes straight back in as a
- * "[SENT FROM MOBILE]" message and the operator sees their own attachment twice.
+ * duplicate app-sent message and the operator sees their own attachment twice.
  *
  * An outbound row is claimed by at most one echo (echo_message_id), so a reply that left as
  * several WhatsApp messages - a voice note plus its text, the only case outbound.ts splits - can

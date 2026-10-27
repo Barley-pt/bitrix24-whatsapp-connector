@@ -1,5 +1,5 @@
 import { callMethod } from './bitrix';
-import { canonicalChatId, upsertChatMap } from './inbound';
+import { WHISPER_PREFIX, canonicalChatId, upsertChatMap } from './inbound';
 import type { Env, PortalRow } from './types';
 import { nowSec, uuid } from './util';
 
@@ -260,7 +260,7 @@ export async function startConversation(
         message: {
           id: uuid(),
           date: nowSec(),
-          text: `SYSTEM MESSAGE: Chat session opened for +${phone}`,
+          text: `${WHISPER_PREFIX}Chat session opened for +${phone}`,
         },
         chat: { id: jid },
       },

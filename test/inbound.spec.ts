@@ -158,12 +158,18 @@ function appSentMessage(sessionId: string, overrides: Partial<InboundQueueMessag
   };
 }
 
-async function seedChatMap(sessionId: string, waJid: string, waPhone: string, waName?: string): Promise<void> {
+async function seedChatMap(
+  sessionId: string,
+  waJid: string,
+  waPhone: string,
+  waName?: string,
+  bitrixChatId: number | null = 1767,
+): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO chat_map (id, session_id, wa_jid, wa_phone, bitrix_chat_id, wa_name, last_message_at)
-     VALUES (?, ?, ?, ?, 1767, ?, 1700000000)`,
+     VALUES (?, ?, ?, ?, ?, ?, 1700000000)`,
   )
-    .bind(crypto.randomUUID(), sessionId, waJid, waPhone, waName ?? null)
+    .bind(crypto.randomUUID(), sessionId, waJid, waPhone, bitrixChatId, waName ?? null)
     .run();
 }
 
@@ -216,6 +222,9 @@ async function runQueue(batch: ReturnType<typeof batchOf>) {
 const FAKE_QUEUE_SEND_RESPONSE: QueueSendResponse = {
   metadata: { metrics: { backlogCount: 0, backlogBytes: 0, oldestMessageTimestamp: new Date(0) } },
 };
+
+/** im.message.add answers with the new message id, not a SUCCESS envelope. */
+const imMessageAddOk = (messageId = 86497) => ({ result: messageId });
 
 const sendMessagesOk = (chatId = '1767') => ({
   result: {
@@ -861,11 +870,23 @@ describe('processInboundMessage: app-sent messages across jid changes', () => {
     expect(outbound?.echo_message_id).toBe('wamid-echo');
   });
 
-  it('posts a phone-typed message under an unseen jid into the existing chat instead of failing NO_PHONE_NUMBER', async () => {
+  it('whispers a phone-typed message under an unseen jid into the existing chat instead of failing NO_PHONE_NUMBER', async () => {
     const sessionId = await seedSession();
     await bindToLine(sessionId, 12);
     await seedChatMap(sessionId, '123@lid', '+971500000000', 'Jane Doe');
-    const sent = captureSendMessages(1);
+
+    let sentBody: Record<string, unknown> = {};
+    fetchMock
+      .get(BITRIX)
+      .intercept({
+        path: '/rest/im.message.add',
+        method: 'POST',
+        body: (raw) => {
+          sentBody = JSON.parse(raw as string);
+          return true;
+        },
+      })
+      .reply(200, imMessageAddOk());
 
     await runQueue(
       batchOf('bwac-inbound', [
@@ -878,8 +899,9 @@ describe('processInboundMessage: app-sent messages across jid changes', () => {
       ]),
     );
 
-    expect(sent[0]!.chat).toStrictEqual({ id: '123@lid' });
-    expect((sent[0]!.user as Record<string, unknown>).id).toBe('+971500000000');
+    // Resolved by phone to the one chat_map row (chat 1767), whichever jid the upsert used.
+    expect(sentBody.DIALOG_ID).toBe('chat1767');
+    expect(String(sentBody.MESSAGE)).toContain('[SENT FROM MOBILE] typed on the phone');
     const log = await env.DB.prepare(
       "SELECT status FROM message_log WHERE session_id = ? AND direction = 'app_outbound' AND wa_message_id = ?",
     )
@@ -1110,8 +1132,8 @@ describe('processInboundMessage: app-sent (messages.upsert, fromMe: true)', () =
       .reply(200, { success: true, publicUrl: 'https://www.wasenderapi.com/api/decrypted-media/wamid-app-3' });
     fetchMock
       .get(BITRIX)
-      .intercept({ path: '/rest/imconnector.send.messages', method: 'POST' })
-      .reply(200, sendMessagesOk());
+      .intercept({ path: '/rest/im.message.add', method: 'POST' })
+      .reply(200, imMessageAddOk());
 
     await runQueue(
       batchOf('bwac-inbound', [
@@ -1149,7 +1171,7 @@ describe('processInboundMessage: app-sent (messages.upsert, fromMe: true)', () =
     expect(rows.results).toHaveLength(1);
   });
 
-  it('posts a genuine app-sent message to Bitrix with the SENT FROM MOBILE label and disable_crm', async () => {
+  it('whispers a genuine app-sent message into the existing Bitrix chat as a SYSTEM message', async () => {
     const sessionId = await seedSession();
     await bindToLine(sessionId, 12);
     await seedChatMap(sessionId, '123@lid', '+971500000000');
@@ -1158,29 +1180,26 @@ describe('processInboundMessage: app-sent (messages.upsert, fromMe: true)', () =
     fetchMock
       .get(BITRIX)
       .intercept({
-        path: '/rest/imconnector.send.messages',
+        path: '/rest/im.message.add',
         method: 'POST',
         body: (raw) => {
           sentBody = JSON.parse(raw as string);
           return true;
         },
       })
-      .reply(200, sendMessagesOk());
+      .reply(200, imMessageAddOk());
 
     const result = await runQueue(batchOf('bwac-inbound', [appSentMessage(sessionId)]));
 
     expect(result.explicitAcks).toStrictEqual(['msg-0']);
-    const [message] = sentBody.MESSAGES as [Record<string, unknown>];
-    expect(message.user).toStrictEqual({
-      id: '+971500000000',
-      phone: '+971500000000',
-      // No contact-lookup mock here, so the lookup fails and the phone fallback applies.
-      name: '+971500000000',
+    // Posted into chat1767 (chat_map.bitrix_chat_id), never as a customer message: SYSTEM 'Y'
+    // keeps Bitrix from delivering it, and the prefix keeps /events/message-add from forwarding it.
+    expect(sentBody).toMatchObject({
+      DIALOG_ID: 'chat1767',
+      MESSAGE: 'SYSTEM MESSAGE: [SENT FROM MOBILE] be there in 10',
+      SYSTEM: 'Y',
     });
-    expect(message.chat).toStrictEqual({ id: '123@lid' });
-    const messageBlock = message.message as Record<string, unknown>;
-    expect(messageBlock.text).toBe('[SENT FROM MOBILE] be there in 10');
-    expect(messageBlock.disable_crm).toBe('Y');
+    expect(sentBody.MESSAGES).toBeUndefined();
 
     const log = await env.DB.prepare(
       "SELECT status FROM message_log WHERE session_id = ? AND direction = 'app_outbound' AND wa_message_id = ?",
@@ -1190,10 +1209,12 @@ describe('processInboundMessage: app-sent (messages.upsert, fromMe: true)', () =
     expect(log?.status).toBe('sent');
   });
 
-  it('includes the cached chat_map name in the SENT FROM MOBILE message.user', async () => {
+  it('falls back to imconnector.send.messages when no Bitrix dialog exists yet', async () => {
     const sessionId = await seedSession();
     await bindToLine(sessionId, 12);
-    await seedChatMap(sessionId, '123@lid', '+971500000000', 'Jane Doe');
+    // chat_map row with no bitrix_chat_id: the first ever phone-typed message for this contact,
+    // so there is no dialog to whisper into and the old call is the only way to create one.
+    await seedChatMap(sessionId, '123@lid', '+971500000000', 'Jane Doe', null);
 
     let sentBody: Record<string, unknown> = {};
     fetchMock
@@ -1206,12 +1227,18 @@ describe('processInboundMessage: app-sent (messages.upsert, fromMe: true)', () =
           return true;
         },
       })
-      .reply(200, sendMessagesOk());
+      .reply(200, sendMessagesOk('1807'));
 
     await runQueue(batchOf('bwac-inbound', [appSentMessage(sessionId)]));
 
     const [message] = sentBody.MESSAGES as [Record<string, unknown>];
     expect(message.user).toStrictEqual({ id: '+971500000000', phone: '+971500000000', name: 'Jane Doe' });
+    const messageBlock = message.message as Record<string, unknown>;
+    expect(messageBlock.text).toBe('[SENT FROM MOBILE] be there in 10');
+    expect(messageBlock.disable_crm).toBe('Y');
+
+    // The fallback records the new Bitrix chat id, so the next phone-typed message whispers.
+    expect((await chatMapRow(sessionId, '123@lid'))?.bitrix_chat_id).toBe(1807);
   });
 
   it('is idempotent under duplicate delivery of the same app-sent message', async () => {
@@ -1219,11 +1246,11 @@ describe('processInboundMessage: app-sent (messages.upsert, fromMe: true)', () =
     await bindToLine(sessionId, 12);
     await seedChatMap(sessionId, '123@lid', '+971500000000');
 
-    // Only one interceptor: a second imconnector.send.messages call would fail the test.
+    // Only one interceptor: a second whisper would fail the test.
     fetchMock
       .get(BITRIX)
-      .intercept({ path: '/rest/imconnector.send.messages', method: 'POST' })
-      .reply(200, sendMessagesOk());
+      .intercept({ path: '/rest/im.message.add', method: 'POST' })
+      .reply(200, imMessageAddOk());
 
     await runQueue(batchOf('bwac-inbound', [appSentMessage(sessionId)]));
     const result = await runQueue(batchOf('bwac-inbound', [appSentMessage(sessionId)]));
@@ -1237,7 +1264,7 @@ describe('processInboundMessage: app-sent (messages.upsert, fromMe: true)', () =
     expect(rows.results).toHaveLength(1);
   });
 
-  it('includes media via the same buildFiles path as customer-inbound messages', async () => {
+  it('names media and its staged URL in the whisper, without a duplicate imconnector post', async () => {
     const sessionId = await seedSession();
     await bindToLine(sessionId, 12);
     await seedChatMap(sessionId, '123@lid', '+971500000000');
@@ -1258,14 +1285,14 @@ describe('processInboundMessage: app-sent (messages.upsert, fromMe: true)', () =
     fetchMock
       .get(BITRIX)
       .intercept({
-        path: '/rest/imconnector.send.messages',
+        path: '/rest/im.message.add',
         method: 'POST',
         body: (raw) => {
           sentBody = JSON.parse(raw as string);
           return true;
         },
       })
-      .reply(200, sendMessagesOk());
+      .reply(200, imMessageAddOk());
 
     const media = appSentMessage(sessionId, {
       message: {
@@ -1276,16 +1303,14 @@ describe('processInboundMessage: app-sent (messages.upsert, fromMe: true)', () =
 
     await runQueue(batchOf('bwac-inbound', [media]));
 
-    const [message] = sentBody.MESSAGES as [
-      { message: { text: string; files: Array<{ url: string; name: string }> } },
-    ];
-    // No text on the message, so the SENT FROM MOBILE label stands alone.
-    expect(message.message.text).toBe('SENT FROM MOBILE');
-    // App-sent media goes through the same re-hosting as customer media: Bitrix gets a URL on this
-    // Worker, never Wasender's temp one.
-    const [file] = message.message.files;
-    expect(file?.name).toBe('image.jpeg');
-    expect(file?.url).toMatch(/^https:\/\/relay\.test\/media\/inbound\/[0-9a-f]{8}-[0-9a-f-]{27}$/);
+    // One delivery only: no MESSAGES payload, no second imconnector call. im.message.add cannot
+    // attach files, so the staged R2 link is named in the whisper text itself.
+    expect(sentBody.SYSTEM).toBe('Y');
+    expect(sentBody.DIALOG_ID).toBe('chat1767');
+    const whisperText = String(sentBody.MESSAGE);
+    expect(whisperText).toContain('SYSTEM MESSAGE: SENT FROM MOBILE');
+    expect(whisperText).toContain('Attachment: image.jpeg - ');
+    expect(whisperText).toMatch(/https:\/\/relay\.test\/media\/inbound\/[0-9a-f-]{36}/);
   });
 
   it('terminal-logs NO_PHONE_NUMBER when the contact was never seen inbound (no chat_map entry)', async () => {

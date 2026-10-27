@@ -707,6 +707,29 @@ describe('event handlers', () => {
       expect(sent.text).toBe('[b]Klaus Weber:[/b] [br]Guten Tag!');
     });
 
+    it.each([
+      ['the SYSTEM=Y flag', { 'data[MESSAGES][0][message][system]': 'Y' }],
+      [
+        'only the SYSTEM MESSAGE: prefix',
+        { 'data[MESSAGES][0][message][text]': 'SYSTEM MESSAGE: [SENT FROM MOBILE] be there in 10' },
+      ],
+    ])('does not forward a system message back to WhatsApp (%s)', async (_label, overrides) => {
+      await install();
+      const sendSpy = vi.spyOn(env.OUTBOUND_QUEUE, 'send').mockResolvedValue({
+        metadata: { metrics: { backlogCount: 0, backlogBytes: 0, oldestMessageTimestamp: new Date(0) } },
+      });
+
+      const res = await call(
+        new Request('https://relay.test/events/message-add', {
+          method: 'POST',
+          body: messageAddForm(overrides),
+        }),
+      );
+
+      expect(res.status).toBe(200);
+      expect(sendSpy).not.toHaveBeenCalled();
+    });
+
     it('carries an operator attachment through to the queue message', async () => {
       await install();
       const sendSpy = vi.spyOn(env.OUTBOUND_QUEUE, 'send').mockResolvedValue({

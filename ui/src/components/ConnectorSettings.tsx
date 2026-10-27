@@ -7,7 +7,7 @@ import {
   fetchState,
   setGroupMessagesEnabled,
 } from '../api';
-import '../bx24';
+import { fitConnectorSettingsWindow } from '../bx24';
 import { useT } from '../i18n';
 
 /**
@@ -32,6 +32,12 @@ export function ConnectorSettings({ boot }: { boot: Bootstrap }) {
   const [groupEnabled, setGroupEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  // This component only ever renders for view 'connector-settings' (App.tsx), so growing the
+  // iframe here is that view's auto-fit. No-op outside Bitrix.
+  useEffect(() => {
+    fitConnectorSettingsWindow();
+  }, []);
 
   useEffect(() => {
     fetchState()
