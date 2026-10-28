@@ -13,6 +13,7 @@ import { getPortalByMemberId } from '../db';
 import * as license from '../license';
 import {
   bindLine,
+  disconnectSession,
   getSession,
   listSessions,
   provisionSession,
@@ -318,6 +319,30 @@ apiRoutes.delete('/api/sessions/:id', async (c) => {
   try {
     await removeSession(c.env, row);
     return c.json({ ok: true });
+  } catch (err) {
+    return upstreamError(c, err);
+  }
+});
+
+/**
+ * The reversible counterpart to DELETE /api/sessions/:id above: takes the number offline but keeps
+ * it - the row, its credentials and its Open Line binding all stay - so the operator can link the
+ * same number again with a new QR scan instead of adding it from scratch. Idempotent: a number
+ * that is already offline is the state the caller asked for, not a failure (sessions.ts's
+ * disconnectSession spells out how Wasender's "nothing to disconnect" refusal is absorbed).
+ *
+ * Free on every tier, including an unlicensed deployment: the licence logic gates features, and
+ * taking your own number offline is not one - gating it would leave a portal with no way to stop a
+ * session it no longer wants, which is a worse outcome than any upsell (compare the seat limit in
+ * POST /api/sessions, which is enforced here and there).
+ */
+apiRoutes.post('/api/sessions/:id/disconnect', async (c) => {
+  const row = await getSession(c.env, c.get('portal').id, c.req.param('id'));
+  if (!row) return c.json({ error: 'NOT_FOUND' }, 404);
+
+  try {
+    const updated = await disconnectSession(c.env, row);
+    return c.json({ ok: true, session: publicSession(updated) });
   } catch (err) {
     return upstreamError(c, err);
   }

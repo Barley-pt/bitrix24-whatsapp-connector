@@ -1,5 +1,5 @@
 import { MoonIcon, PlusIcon, SunIcon } from '@phosphor-icons/react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { type AppState, type Bootstrap, bootstrap, fetchState } from './api';
 import { AddNumber } from './components/AddNumber';
 import { ConnectorSettings } from './components/ConnectorSettings';
@@ -13,6 +13,16 @@ import { getLocale, setLocale, useT } from './i18n';
 import { type Theme, resolveTheme, setTheme } from './theme';
 
 type Panel = { kind: 'list' } | { kind: 'add' } | { kind: 'qr'; sessionId: string };
+
+/**
+ * How often a page that stays open re-verifies its numbers against Wasender. GET /api/state runs
+ * refreshSessionsStatus, so opening the app already reads the truth - but a number can go offline
+ * on its own (the phone logs out under WhatsApp → Linked devices, or the session is dropped
+ * upstream) while this page just sits there, and without a re-check it would keep showing
+ * "Connected" indefinitely. A minute is frequent enough to notice that and rare enough not to
+ * matter on a page nobody is watching.
+ */
+const STATE_POLL_MS = 60_000;
 
 /**
  * Bitrix opens several distinct URLs into this same bundle: the main app tab, the small
@@ -38,18 +48,54 @@ function SetupApp({ boot }: { boot: Bootstrap | null }) {
   const [panel, setPanel] = useState<Panel>({ kind: 'list' });
   const [theme, setThemeState] = useState<Theme>(() => resolveTheme());
 
+  // One /api/state request at a time. The 60 s tick, a window focus and the manual refresh can all
+  // land on the same second, and the answer already on its way is the one they all want - the
+  // in-flight guard keeps a poll from stacking on top of a slow one.
+  const inFlight = useRef(false);
+
   const reload = useCallback(() => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     fetchState()
       .then((next) => {
         setState(next);
         setError(null);
       })
-      .catch((err: Error) => setError(err.message));
+      .catch((err: Error) => setError(err.message))
+      .finally(() => {
+        inFlight.current = false;
+      });
   }, []);
 
   useEffect(() => {
     if (!boot?.session) return;
     reload();
+  }, [boot?.session, reload]);
+
+  /**
+   * Re-verify while the page stays open: on the interval above, and on the two moments a page
+   * actually becomes interesting again - the window regaining focus, and the tab coming back to
+   * the foreground. Both are skipped while the document is hidden (a background tab has nobody to
+   * tell) and while a request is already in flight (reload). Torn down on unmount so the App's
+   * remount when Bitrix swaps placements does not leave timers behind.
+   */
+  useEffect(() => {
+    if (!boot?.session) return;
+
+    const verify = () => {
+      if (document.hidden) return;
+      reload();
+    };
+
+    const timer = setInterval(verify, STATE_POLL_MS);
+    window.addEventListener('focus', verify);
+    document.addEventListener('visibilitychange', verify);
+
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', verify);
+      document.removeEventListener('visibilitychange', verify);
+    };
   }, [boot?.session, reload]);
 
   const displayError = !boot?.session ? t('app.openFromPortal') : error;
@@ -189,6 +235,7 @@ function SetupApp({ boot }: { boot: Bootstrap | null }) {
               <NumberList
                 sessions={state.sessions}
                 onReconnect={(sessionId) => setPanel({ kind: 'qr', sessionId })}
+                onDisconnected={reload}
               />
             )}
           </section>

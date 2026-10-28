@@ -114,6 +114,12 @@ export const sessionStatus = (id: string) =>
 export const deleteSession = (id: string) =>
   request<{ ok: true }>(`/api/sessions/${id}`, { method: 'DELETE' });
 
+/** Takes the number offline but keeps it: the reversible counterpart to deleteSession above. */
+export const disconnectSession = (id: string) =>
+  request<{ ok: true; session: WhatsAppSession }>(`/api/sessions/${id}/disconnect`, {
+    method: 'POST',
+  }).then((r) => r.session);
+
 export const bindSessionToLine = (id: string, lineId: number) =>
   request<{ session: WhatsAppSession }>(`/api/sessions/${id}/bind`, {
     method: 'POST',

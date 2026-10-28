@@ -308,6 +308,47 @@ export async function refreshSessionsStatus(
   );
 }
 
+/**
+ * Wasender's "there is nothing to disconnect" answers. It refuses a disconnect on a session that
+ * is already offline instead of no-op'ing, and the wording is not part of any contract we can pin
+ * down (the disconnect endpoint is documented only as "log out", docs/wasenderapi.md), so the
+ * message is matched loosely rather than on one exact string. Everything that is not this case is
+ * a real failure and propagates.
+ */
+function isAlreadyDisconnected(err: unknown): boolean {
+  if (!(err instanceof WasenderError)) return false;
+  return /not connected|nothing to disconnect|already disconnected|does not need/i.test(err.message);
+}
+
+/**
+ * Reversible counterpart to removeSession: takes the number offline but keeps the row - its
+ * credentials, its Open Line binding and its place in the operator's list - so the same number can
+ * be linked again with a new QR scan instead of being added from scratch.
+ *
+ * Idempotent by design: a number that is already offline is the state the caller asked for, so it
+ * succeeds rather than surfacing an upstream error for a press that already achieved its goal.
+ *
+ * Persisted even when there was no upstream session to disconnect (a row whose Wasender session
+ * was deleted keeps no id): the operator asked for the number to be offline, and that is what the
+ * list has to say. setStatus also clears last_error - a stale error from the previous state would
+ * be actively misleading next to a status of "disconnected".
+ */
+export async function disconnectSession(env: Env, row: SessionRow): Promise<SessionRow> {
+  if (row.wasender_session_id) {
+    try {
+      await wasender(env).disconnectSession(row.wasender_session_id);
+    } catch (err) {
+      if (!isAlreadyDisconnected(err)) throw err;
+    }
+  }
+
+  await setStatus(env, row.id, 'disconnected');
+
+  const updated = await getSessionById(env, row.id);
+  if (!updated) throw new Error('session vanished during disconnect');
+  return updated;
+}
+
 /** Remove upstream first: deleting our row first would orphan a live session under the master account's plan. */
 export async function removeSession(env: Env, row: SessionRow): Promise<void> {
   if (row.wasender_session_id) {

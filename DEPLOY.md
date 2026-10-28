@@ -240,6 +240,10 @@ is broken.
 
 Each number maps to one Open Line, and several numbers can run on one portal.
 
+To take a number offline without removing it, use **Disconnect** in the app's number list: the
+WhatsApp link is dropped immediately, the number stays in the list with its Open Line binding, and
+reconnecting it later is a new QR scan.
+
 ---
 
 ## Verify it works

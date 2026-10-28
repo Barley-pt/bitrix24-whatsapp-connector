@@ -79,6 +79,10 @@ export const ptBR: Record<MessageKey, string> = {
   'numbers.emptyBody':
     'Adicione um número para vinculá-lo pelo código QR. Depois de conectado, as conversas chegam no Contact Center.',
   'numbers.reconnect': 'Reconectar',
+  'numbers.disconnect': 'Desconectar',
+  'numbers.disconnecting': 'Desconectando...',
+  'numbers.confirmDisconnect':
+    'Desconectar {number}? As conversas dele deixam de chegar ao Bitrix24 até você reconectá-lo. O número permanece nesta lista, pronto para ser vinculado de novo com um novo QR.',
 
   'qr.alt': 'Código QR para vincular o WhatsApp',
   'qr.scanTitle': 'Escaneie com o celular que tem este número',

@@ -592,3 +592,118 @@ describe('QR flow', () => {
     expect((await rows())[0]?.status).toBe('connected');
   });
 });
+
+describe('POST /api/sessions/:id/disconnect', () => {
+  async function seedSession(status = 'connected') {
+    await seedPortal();
+    fetchMock
+      .get(WASENDER)
+      .intercept({ path: '/api/whatsapp-sessions', method: 'POST' })
+      .reply(200, { success: true, data: CREATED });
+
+    const res = await call('/api/sessions', 'member-1', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Acme Support', phoneNumber: '+971500000000' }),
+    });
+    const id = ((await res.json()) as { session: { id: string } }).session.id;
+
+    // Provisioning leaves the row 'disconnected' (creation reports no status at all), so a status
+    // with something to take down is set explicitly: otherwise "disconnect flipped the stored
+    // status" would be indistinguishable from the status it started from.
+    await env.DB.prepare('UPDATE whatsapp_sessions SET status = ? WHERE id = ?')
+      .bind(status, id)
+      .run();
+    return id;
+  }
+
+  it('disconnects upstream and persists the disconnected status', async () => {
+    const id = await seedSession();
+
+    // Registered and left to be consumed: if the route never reached Wasender, the afterEach
+    // assertNoPendingInterceptors fails the test.
+    fetchMock
+      .get(WASENDER)
+      .intercept({ path: '/api/whatsapp-sessions/106487/disconnect', method: 'POST' })
+      .reply(200, { success: true, data: {} });
+
+    const res = await call(`/api/sessions/${id}/disconnect`, 'member-1', { method: 'POST' });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; session: { status: string; id: string } };
+    expect(body.ok).toBe(true);
+    // Same shape the UI reads off /api/state, and never any credentials.
+    expect(body.session.id).toBe(id);
+    expect(body.session.status).toBe('disconnected');
+    expect((await rows())[0]?.status).toBe('disconnected');
+  });
+
+  it('404s for an unknown id without calling Wasender', async () => {
+    await seedPortal();
+
+    // No interceptor registered: any upstream call would fail the test.
+    const res = await call('/api/sessions/does-not-exist/disconnect', 'member-1', { method: 'POST' });
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'NOT_FOUND' });
+  });
+
+  it('404s for a session that does not belong to this portal', async () => {
+    const id = await seedSession();
+    await seedPortal('member-2');
+
+    const res = await call(`/api/sessions/${id}/disconnect`, 'member-2', { method: 'POST' });
+
+    expect(res.status).toBe(404);
+    // Still connected in the eyes of its own portal.
+    expect((await rows())[0]?.status).toBe('connected');
+  });
+
+  it('surfaces an upstream failure as 502 and leaves the stored status alone', async () => {
+    const id = await seedSession();
+
+    fetchMock
+      .get(WASENDER)
+      .intercept({ path: '/api/whatsapp-sessions/106487/disconnect', method: 'POST' })
+      .reply(500, { success: false, message: 'Internal server error' });
+
+    const res = await call(`/api/sessions/${id}/disconnect`, 'member-1', { method: 'POST' });
+
+    expect(res.status).toBe(502);
+    expect((await res.json() as { error: string }).error).toBe('UPSTREAM');
+    // A failed disconnect must not read as a successful one: the number is still up.
+    expect((await rows())[0]?.status).toBe('connected');
+  });
+
+  it('succeeds when the number is already disconnected (idempotent)', async () => {
+    const id = await seedSession();
+
+    // Wasender refuses a disconnect on a session that is already offline rather than no-op'ing;
+    // that answer is what the caller asked for, so it is not a failure.
+    fetchMock
+      .get(WASENDER)
+      .intercept({ path: '/api/whatsapp-sessions/106487/disconnect', method: 'POST' })
+      .reply(422, { success: false, message: 'Session is not connected' });
+
+    const res = await call(`/api/sessions/${id}/disconnect`, 'member-1', { method: 'POST' });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, session: { status: 'disconnected' } });
+    expect((await rows())[0]?.status).toBe('disconnected');
+  });
+
+  it('takes a row with no upstream session offline without calling Wasender', async () => {
+    const portal = await seedPortal();
+    await env.DB.prepare(
+      `INSERT INTO whatsapp_sessions (id, portal_id, provisioning_mode, webhook_token, status, created_at)
+       VALUES (?, ?, 'master', ?, 'connected', ?)`,
+    )
+      .bind('row-without-upstream', portal.id, 'tok-without-upstream', Math.floor(Date.now() / 1000))
+      .run();
+
+    // No interceptor registered - there is no wasender_session_id to address.
+    const res = await call('/api/sessions/row-without-upstream/disconnect', 'member-1', { method: 'POST' });
+
+    expect(res.status).toBe(200);
+    expect((await rows())[0]?.status).toBe('disconnected');
+  });
+});

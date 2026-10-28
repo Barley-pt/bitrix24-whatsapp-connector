@@ -70,6 +70,10 @@ export const en = {
   'numbers.emptyBody':
     'Add a number to link it by QR code. Once connected, its conversations arrive in the Contact Center.',
   'numbers.reconnect': 'Reconnect',
+  'numbers.disconnect': 'Disconnect',
+  'numbers.disconnecting': 'Disconnecting...',
+  'numbers.confirmDisconnect':
+    'Disconnect {number}? Its conversations stop reaching Bitrix24 until you reconnect it. The number stays in this list, ready to link again with a new QR scan.',
 
   'qr.alt': 'WhatsApp linking QR code',
   'qr.scanTitle': 'Scan with the phone that holds this number',

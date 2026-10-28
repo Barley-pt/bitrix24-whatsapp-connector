@@ -109,6 +109,10 @@ fields and everything you may need if something goes wrong.
    session under your WasenderAPI account and shows a QR code; scan it from the phone
    (WhatsApp → Linked devices). Then bind the number to one of your Bitrix24 Open Lines.
 
+   To take a number offline later, use **Disconnect** in the same list. The WhatsApp link is
+   dropped straight away and its conversations stop reaching Bitrix24; the number itself stays in
+   the list, so reconnecting it is a new QR scan rather than starting over.
+
 Deploys after the first one:
 
 ```bash
